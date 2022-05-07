@@ -212,7 +212,7 @@
       
     <br>
     <p v-if="this.show_midi_devices">{{this.midi_device_names}}</p><br>
-    <p v-if="!this.phrasebank_loaded">Loading phrase bank... This could take around a minute.</p>
+    <p v-if="!this.phrasebank_loaded">Loading phrase bank {{n_loaded}}/{{n_songs}} ... This could take around a minute.</p>
 
   </div>
 
@@ -312,6 +312,9 @@ export default {
 
       // Song data (original)
       allData: {},
+
+      n_songs: 0,
+      n_loaded: 0,
 
       songID: "000",
       songname: '',
@@ -576,24 +579,36 @@ export default {
     },
 
     get_data_all(){
+      let n_songs = 0
       axios.get(this.BACKEND_PATH + '/get_data_all')
         .then(response => {
               let data_in = response.data
-              if (data_in[0] != 0){
+              if (!(data_in[0] > 0)){
                 data_in = JSON.parse(response.data)
               }
-              let data = {}
-              for (let i=1; i<data_in.length; i++){
-                let key = data_in[i][0]
-                let val = data_in[i][1]
-                data[key] = val
-              }
-              this.allData = data 
-              this.edge_weights = data['edge_weights']
-              this.get_data()
-              this.phrasebank_loaded = true
+              this.allData = {'edge_weights': data_in[1][1]}
+              this.edge_weights = data_in[1][1]
+              n_songs = data_in[0]
+              this.n_songs = n_songs
 
-              this.apply_filter_anchors()
+              for (let i=0; i<n_songs; i++){
+                axios.get(this.BACKEND_PATH + '/get_data_all_idx', {params: {idx: i}})
+                  .then(response => {
+                    this.n_loaded ++
+                    let data_in = response.data
+                    if (data_in[0] != 0){
+                      data_in = JSON.parse(response.data)
+                    }
+                    let key = data_in[1][0]
+                    let val = data_in[1][1]
+                    this.allData[key] = val
+                    if (Object.keys(this.allData).length == n_songs+1){
+                      this.get_data()
+                      this.phrasebank_loaded = true
+                      this.apply_filter_anchors()
+                    }
+              })
+              }
         })
     },
 

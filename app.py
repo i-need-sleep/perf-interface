@@ -241,21 +241,17 @@ def get_data():
 
 @app.route('/get_data_all', methods=['GET'])
 def get_data_all():
-    def stream_data():
-        yield '[0'
-        for line in DATA:
-            yield ','
-            yield json.dumps(line)
-        yield ']'
-    return app.response_class(stream_data())
+    out = [len(SAMPLES)]
+    # Load AccoMontage edge weights
+    with open('static/edge_weight_reduced.json', 'r') as f:
+        out.append(['edge_weights', json.load(f)])
+    return json.dumps(out)
 
-# Make the phrase data
-DATA = []
-with open('static/edge_weight_reduced.json', 'r') as f:
-    DATA.append(['edge_weights', json.load(f)])
-for sample in SAMPLES:
-    DATA.append([sample, get_data_from_folder(sample)])
-print("loaded")
+@app.route('/get_data_all_idx', methods=['GET'])
+def get_data_idx():
+    idx = int(request.args.get("idx"))
+    out = get_data_from_folder(SAMPLES[idx])
+    return json.dumps([0,[SAMPLES[idx], out]])
 
 if __name__ == '__main__':
     # threading.Timer(1.25, lambda: webbrowser.open("http://127.0.0.1:5000/", new=0, autoraise=True) ).start()

@@ -579,7 +579,6 @@ export default {
       axios.get(this.BACKEND_PATH + '/get_data_all')
         .then(response => {
               let data_in = response.data
-              console.log(data_in)
               if (data_in[0] != 0){
                 data_in = JSON.parse(response.data)
               }

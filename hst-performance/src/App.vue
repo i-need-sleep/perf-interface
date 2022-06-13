@@ -163,7 +163,9 @@
   <div class="row">
     <div class="col-4">
     <button id="altered_reset" class="btn btn-light" v-on:click="player_reset">Reset</button><br>
-    Bpm: <span id=bpm_text>{{this.bpm}}</span><div id=slider_container><input type="range" class="form-control-range" id=bpm_slider min=30 max=200 v-model="bpm"></div>
+    Bpm: <span id=bpm_text>{{this.bpm}}</span><div class=slider_container><input type="range" class="form-control-range slider" id=bpm_slider min=30 max=200 v-model="bpm"></div>
+    Velocity: <span id=bpm_text>{{this.velocity_scale}}%</span><div class=slider_container><input type="range" class="form-control-range slider" id=vel_slider min=1 max=100 v-model="velocity_scale"></div>
+
     <div class="input-group-prepend">
     <div class="input-group-text" style="width:160px">
       <input type="checkbox" id="root_overlay" v-bind:checked="root_overlay" v-on:click="this.root_on_click()"> <span> &nbsp; Root overlay</span>
@@ -353,6 +355,7 @@ export default {
 
       // Interfacing (outside)
       bpm: 60,
+      velocity_scale: 10,
       playing: false,
       loaded: false,
       phrasebank_loaded: false,
@@ -426,7 +429,7 @@ export default {
               end += 8
           }
               if (start>=filter_start && start<filter_end){
-                  notes_out.push({pitch:pit, startTime:start, endTime:end, velocity:velo})
+                  notes_out.push({pitch:pit, startTime:start, endTime:end, velocity:velo*this.velocity_scale/100})
               }
       }
       return notes_out
@@ -718,12 +721,11 @@ export default {
       this.altered_noteseq.notes = this.altered_noteseq.notes.concat(new_notes)  
       let quant_note_seq = this.notes_to_quant_noteseq(new_notes)
 
-      
-
       // Restart the player
       if (player.isPlaying()){
         player.stop()
       }
+      console.log(quant_note_seq)
       player.start(quant_note_seq, this.bpm)
       this.altered_noteseqs[(this.t-this.t%4)/4] = quant_note_seq
 
@@ -788,7 +790,7 @@ export default {
             break
           }
         }
-        out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), veloicity: note.velocity})
+        out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), velocity: note.velocity*this.velocity_scale/100})
       }
       return out
     },
@@ -1415,7 +1417,7 @@ export default {
     output_midi(note){
         let dur = (note.endTime - note.startTime)*60000/this.bpm
         if (this.show_midi_devices){
-          this.midi_device.channels[this.midi_channel].playNote(note.pitch, {duration: dur})
+          this.midi_device.channels[this.midi_channel].playNote(note.pitch, {duration: dur, attack: note.velocity/128})
         }
       },
 
@@ -1466,6 +1468,9 @@ export default {
       }
       if (['r','R'].includes(key)){
         this.replay_all()
+      }
+      if (['m'].includes(key)){
+        console.log(this.altered_noteseq)
       }
     })
 
@@ -1638,8 +1643,8 @@ canvas{
   opacity: 0.85;
 }
 
-/* Bpm slider ////////////////////////////////////////////////////////////////////////////////// */
-#bpm_slider{
+/* Bpm and vel_scale slider ////////////////////////////////////////////////////////////////////////////////// */
+.slider{
     position: relative;
     top: 15px;
     -webkit-appearance: none;
@@ -1652,11 +1657,11 @@ canvas{
     transition: opacity .2s;
 }
 
-#bpm_slider:hover {
+.slider:hover {
     opacity: 1;
   }
   
-#bpm_slider::-webkit-slider-thumb {
+.slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 25px;
@@ -1666,7 +1671,7 @@ canvas{
     stroke-width: 0px;
 }
   
-#bpm_slider::-moz-range-thumb {
+.slider::-moz-range-thumb {
     width: 25px;
     height: 25px;
     background: #80b8f5;
@@ -1674,7 +1679,7 @@ canvas{
     stroke-width: 0px;
 }
 
-#slider_container{
+.slider_container{
     height: 50px;
 }
 

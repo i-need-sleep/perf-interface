@@ -13,6 +13,7 @@ import pretty_midi
 from pretty_midi import constants
 
 SAMPLE_PATH = "static/samples_out"
+EXPRESSIVE_PATH = 'static/resolved_909'
 SAMPLES = os.listdir(SAMPLE_PATH)
 
 # Server Setup ###################################################################################################################
@@ -24,7 +25,9 @@ app.secret_key = str(random.random())
 def get_sample(sample_folder):
     original_midi_path_mixed = "{}/{}/mixed.mid".format(SAMPLE_PATH, sample_folder)
     original_midi_path_mel = "{}/{}/melody.mid".format(SAMPLE_PATH, sample_folder)
-    original_midi_path_acc = "{}/{}/accompaniment_track.mid".format(SAMPLE_PATH, sample_folder)
+    # original_midi_path_acc = "{}/{}/accompaniment_track.mid".format(SAMPLE_PATH, sample_folder)
+    # With expressive note length / velo
+    original_midi_path_acc = "{}/{}.mid".format(EXPRESSIVE_PATH, sample_folder)
     notedic_path = "{}/{}/{}_mixed.npy".format(SAMPLE_PATH, sample_folder, sample_folder)
     notedic_mel_path = "{}/{}/{}_mel.npy".format(SAMPLE_PATH, sample_folder, sample_folder)
     notedic_acc_path = "{}/{}/{}_acc.npy".format(SAMPLE_PATH, sample_folder, sample_folder)
@@ -52,13 +55,26 @@ def get_sample(sample_folder):
 
     # Get horizontal and vertical densities
     onset_dict = {}
+    v_ctr = 0
+    v_ctr_offbeat = 0
+    onset_down = []
+    onset_up = []
     for val_ in notedic_acc.values():
         for notes in val_.values():
             for note in notes:
                 if note[0] not in onset_dict.keys():
                     onset_dict[note[0]] = 1
+                if note[0] % 1 == 0:
+                    v_ctr += 1
+                    if note[0] not in onset_down:
+                        onset_down.append(note[0])
+                elif note[0] % 1 == 0.5:
+                    v_ctr_offbeat += 1
+                    if note[0] not in onset_up:
+                        onset_up.append(note[0])
             hd = len(onset_dict)
-            vd = len(notes) / hd
+            # vd = len(notes) / hd
+            vd = max(v_ctr/len(onset_down), v_ctr_offbeat/len(onset_up))
             break
         break
 
@@ -102,7 +118,7 @@ def midi_to_noteseq(midi_path):
     note_seq = {'notes': [], 'totalTime':16}
     rescale = 4/3
     for note in midi.instruments[0].notes:
-        note_seq['notes'].append({'pitch': note.pitch, 'startTime':note.start*rescale, 'endTime':note.end*rescale})
+        note_seq['notes'].append({'pitch': note.pitch, 'startTime':note.start*rescale, 'endTime':note.end*rescale, 'velocity':note.velocity})
     return note_seq
 
 def chd_to_deg(c_mat, key):

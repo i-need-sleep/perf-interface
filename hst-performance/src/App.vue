@@ -162,9 +162,17 @@
   <!-- Interfacing -->
   <div class="row">
     <div class="col-4">
-    <button id="altered_reset" class="btn btn-light" v-on:click="player_reset">Reset</button><br>
+    <button id="altered_reset" class="btn btn-light" v-on:click="player_reset">Reset</button>
+    <button class="btn btn-light dropdown-toggle" type="button" data-toggle="dropdown">Expressive Performance
+      <span class="caret"></span></button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item">Dynamics: {{this.expressiveness_vel}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_vel"></div></a></li>
+        <li><a class="dropdown-item">Onset: {{this.expressiveness_tempo}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_tempo"></div></a></li>
+        <li><a class="dropdown-item">Articulation: {{this.expressiveness_dur}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_dur"></div></a></li>
+      </ul>
+    <br>
     Bpm: <span id=bpm_text>{{this.bpm}}</span><div class=slider_container><input type="range" class="form-control-range slider" id=bpm_slider min=30 max=200 v-model="bpm"></div>
-    Velocity: <span id=bpm_text>{{this.velocity_scale}}%</span><div class=slider_container><input type="range" class="form-control-range slider" id=vel_slider min=1 max=100 v-model="velocity_scale"></div>
+    Velocity: <span id=bpm_text>{{this.velocity_scale}}%</span><div class=slider_container><input type="range" class="form-control-range slider" id=vel_slider min=5 max=100 v-model="velocity_scale"></div>
 
     <div class="input-group-prepend">
     <div class="input-group-text" style="width:160px">
@@ -282,6 +290,8 @@
 </template>
 
 <script>
+// import { NoteSequence } from '@magenta/music'
+import { createQuantizedNoteSequence, unquantizeSequence } from '@magenta/music/esm/core/sequences'
 import InterfaceFixed from './components/InterfaceFixed.vue'
 import InterfaceMovable from './components/InterfaceMovable.vue'
 import PhraseFilter from './components/PhraseFilter.vue'
@@ -290,9 +300,11 @@ const axios = require('axios').default
 const d3 = require("d3")
 const mm = require("@magenta/music")
 const _ = require("html-midi-player")
+const Tone = require("tone")
 const {WebMidi} = require("webmidi");
 console.log(_)
 var player = new mm.SoundFontPlayer('https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus')
+// var debug_player = new mm.SoundFontPlayer('https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus')
 
 export default {
   name: 'App',
@@ -306,6 +318,7 @@ export default {
     return{
       // Constants (not really)
       BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
+      DEBUG: true,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
       // Chord playback
@@ -339,6 +352,11 @@ export default {
       notedic_acc: 0,
 
       sustain: [],
+
+      // Expressive performance
+      expressiveness_vel: 100,
+      expressiveness_tempo: 100,
+      expressiveness_dur: 100,
 
       // Song data (altered)
       altered_noteseq: {notes:[], totalTime: 16},
@@ -423,13 +441,12 @@ export default {
           let start = notes_in[i][0]
           let end = notes_in[i][1]
           let pit = notes_in[i][2]
-          let velo = notes_in[i][3]
           if (filter_start >= 8){
               start += 8
               end += 8
           }
               if (start>=filter_start && start<filter_end){
-                  notes_out.push({pitch:pit, startTime:start, endTime:end, velocity:velo*this.velocity_scale/100})
+                  notes_out.push({pitch:pit, startTime:start, endTime:end})
               }
       }
       return notes_out
@@ -505,7 +522,11 @@ export default {
 
     // Fetch data from the backend
     get_songdata(){
-      axios.get(this.BACKEND_PATH + '/get_songdata')
+      let backend_path = this.BACKEND_PATH
+      if (this.DEBUG){
+        backend_path = 'http://127.0.0.1:5000'
+      }
+      axios.get(backend_path + '/get_songdata')
         .then(response => {
               let data = response.data
               if (! data.songData){
@@ -583,7 +604,11 @@ export default {
 
     get_data_all(){
       let n_songs = 0
-      axios.get(this.BACKEND_PATH + '/get_data_all')
+      let backend_path = this.BACKEND_PATH
+      if (this.DEBUG){
+        backend_path = 'http://127.0.0.1:5000'
+      }
+      axios.get(backend_path + '/get_data_all')
         .then(response => {
               let data_in = response.data
               if (!(data_in[0] > 0)){
@@ -592,10 +617,32 @@ export default {
               this.allData = {'edge_weights': data_in[1][1]}
               this.edge_weights = data_in[1][1]
               n_songs = data_in[0]
+              if (this.DEBUG){
+                n_songs = 1
+              }
               this.n_songs = n_songs
 
               for (let i=0; i<n_songs; i++){
-                axios.get(this.BACKEND_PATH + '/get_data_all_idx', {params: {idx: i}})
+                if (this.DEBUG){
+                  axios.get(backend_path + '/get_data_all_idx', {params: {idx: 3}})
+                  .then(response => {
+                    this.n_loaded ++
+                    let data_in = response.data
+                    if (data_in[0] != 0){
+                      data_in = JSON.parse(response.data)
+                    }
+                    let key = data_in[1][0]
+                    let val = data_in[1][1]
+                    this.allData[key] = val
+                    if (Object.keys(this.allData).length == n_songs+1){
+                      this.get_data()
+                      this.phrasebank_loaded = true
+                      this.apply_filter_anchors()
+                    }
+              })
+                  continue
+                }
+                axios.get(backend_path + '/get_data_all_idx', {params: {idx: i}})
                   .then(response => {
                     this.n_loaded ++
                     let data_in = response.data
@@ -667,19 +714,20 @@ export default {
         return
       }
       
-      setTimeout(() => {  this.player_play(); }, 16*250*60/this.bpm)
+      let [tempo_changes, window_len] = this.get_tempo_changes()
+      setTimeout(() => {  this.player_play(); }, window_len * 1000)
       // Update cell highlighting
       for (let i=this.t; i<this.t+4; i++){
-        this.highlight_cell("altered"+i, 16*250*60/this.bpm/1000)
+        this.highlight_cell("altered"+i, window_len)
       }
       const high_light_step = (time) => {
-        this.highlight_cell("time_altered"+time, 4*250*60/this.bpm/1000)
+        this.highlight_cell("time_altered"+time, window_len / 4)
         if (time % 4 == 3){
           return
         }
         setTimeout(() => {
           high_light_step(time+1)
-        }, 4*250*60/this.bpm);
+        }, window_len * 250);
       }
       high_light_step(this.t)
 
@@ -718,16 +766,27 @@ export default {
       query = query.join(',')
       let note_list = this.notedic[(this.t - this.t%8)/8][query]
       let new_notes = this.list_to_noteseq(note_list, this.t, this.t+this.STEP_SIZE, true)
+      new_notes = this.apply_dynamics(new_notes)
       this.altered_noteseq.notes = this.altered_noteseq.notes.concat(new_notes)  
       let quant_note_seq = this.notes_to_quant_noteseq(new_notes)
+      let noteseq = unquantizeSequence(quant_note_seq)
+      noteseq = this.apply_articulation(noteseq)
+
+
+      // Set tompo curve
+      let now = Tone.Transport.now()
+      Tone.Transport.bpm.setValueAtTime(60, now)
+      for (let i=0; i<tempo_changes.length; i++){
+        Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], now + tempo_changes[i][0])
+      }
 
       // Restart the player
       if (player.isPlaying()){
         player.stop()
       }
-      console.log(quant_note_seq)
-      player.start(quant_note_seq, this.bpm)
-      this.altered_noteseqs[(this.t-this.t%4)/4] = quant_note_seq
+      noteseq.totalTime = 6 // Somehow this fixes a bug where the last bar is not played???
+      player.start(noteseq)
+      this.altered_noteseqs[(this.t-this.t%4)/4] = this.altered_noteseq
 
 
       // Canvas and noteseq
@@ -774,7 +833,8 @@ export default {
     },
 
     notes_to_quant_noteseq(notes){
-      let out = {notes: [], quantizationInfo: {stepsPerQuarter: 4}, tempos: [{time: 0, qpm: 60}],totalQuantizedSteps: 64}
+      let out = createQuantizedNoteSequence(4, 60)
+      out.tempos = [{time: 0, qpm: 60}]
       for (let i=0; i<notes.length; i++){
         let note = notes[i]
         let note_start = note.startTime
@@ -790,7 +850,7 @@ export default {
             break
           }
         }
-        out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), velocity: note.velocity*this.velocity_scale/100})
+        out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), velocity: note.velocity})
       }
       return out
     },
@@ -800,8 +860,258 @@ export default {
       if (t == 0){
         t = 16
       }
-      let canvas_note = {pitch: note.pitch, startTime: note.startTime*this.bpm/60+t-4, endTime: note.endTime*this.bpm/60+t-4}
+      let canvas_note = {pitch: note.pitch, startTime: note.startTime + t - 4, endTime: note.endTime + t - 4}
+      // console.log(canvas_note)
+      if (note.expressive){
+        canvas_note = {pitch: note.pitch, startTime: note.quant_startTime*this.bpm/60/4+t-4, endTime: note.quant_endTime*this.bpm/60/4+t-4}
+      }
       this.altered_vis.redraw(canvas_note)
+    },
+
+    // Expressive dynamics / timing
+    apply_dynamics(noteseq){
+      let original_notes = this.original_noteseq.notes
+      let altered_notes = noteseq
+
+      // Sort everything by start time
+      original_notes.sort(function (a,b){return a.startTime - b.startTime})
+      altered_notes.sort(function (a,b){return a.startTime - b.startTime})
+
+      // Find the average vel of the original noteseq
+      let avg_vel = 0
+      for (let i=0; i<original_notes.length; i++){
+        avg_vel = avg_vel + original_notes[i].velocity
+      }
+      avg_vel = Math.floor(avg_vel / original_notes.length)
+
+      // Put notes into time-quantized buckeds
+      let original_buckets = [] // of velocities
+      let altered_buckets = [] // of indices
+      for (let i=0; i<16; i++){
+        original_buckets.push([])
+        altered_buckets.push([])
+      }
+      for (let i=0; i<original_notes.length; i++){
+        let note = original_notes[i]
+        if (note.startTime < this.t || note.startTime >= this.t + 4){
+          continue
+        }
+        original_buckets[Math.round(note.startTime / 0.25) % 16].push(note.velocity)
+      }
+
+      for (let i=0; i<altered_notes.length; i++){
+        let note = altered_notes[i]
+        altered_buckets[note.startTime / 0.25 % 16].push(i)
+      }
+
+      for (let i=0; i<16; i++){
+        let altered_bucket = altered_buckets[i]
+        let original_bucket = original_buckets[i]
+        for (let j=0; j<altered_bucket.length; j++){
+          let idx = altered_bucket[j]
+          if (original_bucket.length == 0){
+            if (idx == 0){
+              altered_notes[0].velocity = 1
+            }
+            else{
+              altered_notes[idx].velocity = altered_notes[idx - 1].velocity
+            }
+          }
+          else if (altered_bucket.length == original_bucket.length){
+            altered_notes[idx].velocity = original_bucket[j]
+          }
+          else if (j == altered_bucket.length - 1){
+            altered_notes[idx].velocity = original_bucket[original_bucket.length - 1]
+          }
+          else{
+            // Interpolate between the closest 2 velo
+            let pos = j / altered_bucket.length * original_bucket.length
+            let bottom_vel = original_bucket[Math.floor(pos)]
+            let top_vel = original_bucket[Math.floor(pos) + 1]
+            let bottom_weight = pos % 1
+            altered_notes[idx].velocity = bottom_vel * bottom_weight + top_vel * (1 - bottom_weight)
+          }
+        }
+      }
+
+      // Adjust for spread and scale
+      for (let i=0; i<altered_notes.length; i++){
+        altered_notes[i].velocity = Math.floor(((altered_notes[i].velocity / avg_vel - 1)* this.expressiveness_vel / 100 + 1 ) * 127 * this.velocity_scale/100)
+        if (altered_notes[i].velocity > 127){
+          altered_notes[i].velocity = 127
+        }
+        if (altered_notes[i].velocity < 3){
+          altered_notes[i].velocity = 3
+        }
+      }
+      return noteseq
+    },
+
+    apply_articulation(noteseq){
+      let original_notes = this.original_noteseq.notes
+      let altered_notes = noteseq.notes
+
+      // Sort everything by start time
+      original_notes.sort(function (a,b){return a.startTime - b.startTime})
+      altered_notes.sort(function (a,b){return a.startTime - b.startTime})
+
+      // Put notes into time-quantized buckeds
+      let original_buckets = [] // of note lengths 
+      let altered_buckets = [] // of indices
+      for (let i=0; i<16; i++){
+        original_buckets.push([])
+        altered_buckets.push([])
+      }
+      for (let i=0; i<original_notes.length; i++){
+        let note = original_notes[i]
+        if (note.startTime < this.t || note.startTime >= this.t + 4){
+          continue
+        }
+        original_buckets[Math.round(note.startTime / 0.25) % 16].push(note.endTime - note.startTime)
+      }
+
+      for (let i=0; i<altered_notes.length; i++){
+        let note = altered_notes[i]
+        altered_buckets[note.startTime / 0.25 % 16].push(i)
+      }
+
+      for (let i=0; i<16; i++){
+        let altered_bucket = altered_buckets[i]
+        let original_bucket = original_buckets[i]
+        for (let j=0; j<altered_bucket.length; j++){
+          let idx = altered_bucket[j]
+          if (original_bucket.length != 0){
+            let dur = altered_notes[idx].endTime - altered_notes[idx].startTime
+            if (altered_bucket.length == original_bucket.length){
+              altered_notes[idx].endTime = ((original_bucket[j]/dur - 1) * this.expressiveness_dur / 100 + 1) * dur + altered_notes[idx].startTime
+            }
+            else if (j == altered_bucket.length - 1){
+              altered_notes[idx].endTime = ((original_bucket[original_bucket.length - 1]/dur - 1) * this.expressiveness_dur / 100 + 1) * dur + altered_notes[idx].startTime
+            }
+            else{
+              // Interpolate between the closest 2 dur
+              let pos = j / altered_bucket.length * original_bucket.length
+              let bottom_vel = original_bucket[Math.floor(pos)]
+              let top_vel = original_bucket[Math.floor(pos) + 1]
+              let bottom_weight = pos % 1
+              let dur_rate = bottom_vel * bottom_weight + top_vel * (1 - bottom_weight)
+              altered_notes[idx].endTime = ((dur_rate/dur - 1) * this.expressiveness_dur / 100 + 1) * dur + altered_notes[idx].startTime
+            }
+          }
+        }
+      }
+
+      // Sustain the notes who end at step end
+      for (let i=0; i<altered_notes.length; i++){
+        if (altered_notes[i].endTime == 4){
+          altered_notes[i].endTime = 8
+        }
+      }
+      return noteseq
+    },
+
+    get_tempo_changes(){
+      // Calculate the tempo changes for the phrase, then return the relative part
+
+      let notes = this.original_noteseq_mel.notes
+      notes.sort(function (a,b){return a.startTime - b.startTime})
+
+      let out = [] //[[onset_step, lengthened], ...]
+      for (let i=0; i<notes.length; i++){
+        let note = notes[i]
+        let dur = Math.round((note.endTime - note.startTime)/0.25)
+        let lengthened = false
+        
+        // TL1
+        if (i > 0 && i < notes.length - 1){
+          let pre_dur = Math.round((notes[i-1].endTime - notes[i-1].startTime)/0.25)
+          let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
+          if (pre_dur == dur && next_dur > dur){
+            lengthened = true
+          }
+        }
+
+        // TL2
+        if (i < notes.length - 1){
+          let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
+          if (next_dur >= dur * 3){
+            lengthened = true
+          }
+        }
+
+        out.push([Math.round(note.startTime/0.25), lengthened])
+      }
+      // convert out to bpm changes
+      let bpm_changes = [[0.001, this.bpm]] // [[time(second), bpm], ...]
+      let t = 0
+      let cur_step = 0
+      let slowed = 0
+      let bpm = this.bpm
+      let slice_len = [-1, -1, -1, -1]
+
+      for (let i=0; i<out.length; i++){
+        let step = out[i][0]
+        let lengthened = out[i][1]
+        
+        for (let j=0; j<4; j++){
+          if (slice_len[j] == -1 && step > 16 + 16 * j){
+            slice_len[j] = t + (16 + 16 * j - cur_step) * 15 / bpm
+          }
+        }
+
+        t += (step - cur_step) * 60 / bpm / 4
+
+        if (i == out.length - 1){
+          slice_len[3] = t + 15 / bpm * (64 - step)
+        }
+        
+        if (lengthened){
+          // Slow down
+          bpm /= (0.05 * this.expressiveness_tempo / 100) + 1
+          bpm_changes.push([t, bpm])
+          slowed += 1
+        }
+        else if(!lengthened && slowed > 0){
+          // Speed up
+          bpm *= ((0.05 * this.expressiveness_tempo / 100) + 1) ** slowed
+          slowed = 0
+          bpm_changes.push([t, bpm])
+        }
+        cur_step = step
+      }
+
+      for (let j=0; j<4; j++){
+        if (slice_len[j] == -1){
+          slice_len[j] = slice_len[j-1] + 240 / bpm
+        }
+      }
+      
+      let changes_out = [[0.001, this.bpm]]
+      for (let i=0; i<bpm_changes.length; i++){
+        let [t, bpm] = bpm_changes[i]
+        
+        if (this.t == 0){
+          if (t < slice_len[0] && t != 0.001){
+            changes_out.push([t, bpm])
+          } 
+        }
+        else{
+          if (t <= slice_len[this.t / 4 - 1]){
+            changes_out[0][1] = bpm
+          }
+          if (t > slice_len[this.t / 4 - 1] && t < slice_len[this.t / 4]){
+            t -= slice_len[this.t / 4 - 1]
+            changes_out.push([t, bpm])
+          }
+        }
+      }
+
+      for (let j=3; j > 0; j--){
+        slice_len[j] -= slice_len[j-1]
+      }
+
+
+      return [changes_out, slice_len[this.t / 4]]
     },
 
     // Interfacing (input type)
@@ -1325,7 +1635,7 @@ export default {
         let dists = []
         for (let i=0; i<this.edge_weights.samples.length; i++){
           let sample = this.allData[this.edge_weights.samples[i]]
-          let dist = (sample['hd'] - this.filter_h) ** 2 + (sample['vd'] = this.filter_v) ** 2
+          let dist = (sample['hd'] - this.filter_h) ** 2 + (sample['vd'] - this.filter_v) ** 2
           if (! (dist in dist_dic) ){
             dist_dic[dist] = [i]
             dists.push(dist)
@@ -1470,7 +1780,10 @@ export default {
         this.replay_all()
       }
       if (['m'].includes(key)){
-        console.log(this.altered_noteseq)
+      console.log(this.DEBUG)
+        if (this.DEBUG){
+          console.log(this.original_noteseq)
+        }
       }
     })
 

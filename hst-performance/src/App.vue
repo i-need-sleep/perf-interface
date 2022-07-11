@@ -858,11 +858,17 @@ export default {
       // Set tompo curve
       let now = Tone.Transport.now()
       Tone.Transport.bpm.setValueAtTime(60, now)
-      console.log(tempo_changes)
-      Tone.Transport.bpm.setValueAtTime(tempo_changes[0][1], now + tempo_changes[0][0])
-      for (let i=1; i<tempo_changes.length-1; i++){
-        console.log(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
-        Tone.Transport.bpm.rampTo(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
+      
+      if (this.demo.name == 'none'){
+        Tone.Transport.bpm.setValueAtTime(tempo_changes[0][1], now + tempo_changes[0][0])
+        for (let i=1; i<tempo_changes.length-1; i++){
+          Tone.Transport.bpm.rampTo(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
+        }
+      }
+      else{
+        for (let i=0; i<tempo_changes.length; i++){
+          Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], now + tempo_changes[i][0])
+        }
       }
 
       // Restart the player
@@ -1242,8 +1248,9 @@ export default {
         out_out.push([cur_t, bpm])
       }
       
-      // end point
-      
+      if (this.demo.name != "none"){
+        return [changes_out.slice(0,-1), slice_len[this.t / 4]]
+      }
       return [out_out, cur_t]
     },
 

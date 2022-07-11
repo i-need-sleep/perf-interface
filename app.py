@@ -8,18 +8,24 @@ import numpy as np
 
 from flask import Flask, render_template, request, session, url_for, redirect, flash
 from flask_cors import CORS, cross_origin
+import jinja2
 
 import pretty_midi
 from pretty_midi import constants
 
 SAMPLE_PATH = "static/samples_out"
+SAMPLE_PATH_ANTHEM = "static/samples_out_anthem"
 EXPRESSIVE_PATH = 'static/resolved_909'
 SAMPLES = os.listdir(SAMPLE_PATH)
+SAMPLES_ANTHEM = os.listdir(SAMPLE_PATH_ANTHEM)
 
 # Server Setup ###################################################################################################################
 app = Flask(__name__)
+app.jinja_options['variable_start_string'] = '[['
+app.jinja_options['variable_end_string'] = ']]'
 CORS(app)
 app.secret_key = str(random.random())
+#  = jinja2.Environment(loader=loader, trim_blocks=True,block_start_string='@@',block_end_string='@@',variable_start_string='@=', variable_end_string='=@')
 
 # Helpers ########################################################################################################################
 def get_sample(sample_folder):
@@ -221,7 +227,7 @@ def get_data_from_folder(folder):
 # The Main Thing ##################################################################################################################
 @app.route('/', methods=['GET'])
 def index():
-    return render_template("index.html")
+    return render_template("index.html", demo = '')
 
 @app.route('/favicon.ico', methods=['GET'])
 def serve_favicon():
@@ -269,6 +275,24 @@ def get_data_idx():
     out = get_data_from_folder(SAMPLES[idx])
     return json.dumps([0,[SAMPLES[idx], out]])
 
+@app.route('/get_data_anthem', methods=['GET'])
+def get_data_anthem():
+    out = [len(SAMPLES_ANTHEM)]
+    out.append(['edge_weights', 'hi'])
+    return json.dumps(out)
+
+@app.route('/get_data_anthem_idx', methods=['GET'])
+def get_data_anthem_idx():
+    idx = int(request.args.get("idx"))
+    out = get_data_from_folder(SAMPLES_ANTHEM[idx])
+    return json.dumps([0,[SAMPLES_ANTHEM[idx], out]])
+
+# Demos
+@app.route('/uae_anthem', methods=['GET'])
+def uae_anthem():
+    return render_template("index.html", demo = 'anthem')
+
 if __name__ == '__main__':
     # threading.Timer(1.25, lambda: webbrowser.open("http://127.0.0.1:5000/", new=0, autoraise=True) ).start()
+    print(os.getenv('PORT',5000))
     app.run(debug=False,port=os.getenv('PORT',5000))

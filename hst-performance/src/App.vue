@@ -163,16 +163,12 @@
   <div class="row">
     <div class="col-4">
     <button id="altered_reset" class="btn btn-light" v-on:click="player_reset">Reset</button>
-    <button class="btn btn-light dropdown-toggle" type="button" data-toggle="dropdown">Expressive Performance
-      <span class="caret"></span></button>
-      <ul class="dropdown-menu">
-        <li><a class="dropdown-item">Dynamics: {{this.expressiveness_vel}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_vel"></div></a></li>
-        <li><a class="dropdown-item">Onset: {{this.expressiveness_tempo}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_tempo"></div></a></li>
-        <li><a class="dropdown-item">Articulation: {{this.expressiveness_dur}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_dur"></div></a></li>
-      </ul>
     <br>
-    Bpm: <span id=bpm_text>{{this.bpm}}</span><div class=slider_container><input type="range" class="form-control-range slider" id=bpm_slider min=30 max=200 v-model="bpm"></div>
+    Bpm: <span id=bpm_text>{{this.bpm}}</span><div class=slider_container><input type="range" class="form-control-range slider" min=30 max=200 v-model="bpm" v-on:pointerout="follow_tempo"></div>
+    Next bpm: <span id=bpm_text>{{this.next_bpm}}</span><div class=slider_container><input type="range" class="form-control-range slider" min=30 max=200 v-model="next_bpm"></div>
     Velocity: <span id=bpm_text>{{this.velocity_scale}}%</span><div class=slider_container><input type="range" class="form-control-range slider" id=vel_slider min=5 max=100 v-model="velocity_scale"></div>
+    Expressive dynamics: <span >{{this.expressiveness_vel}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_vel"></div></span>
+    Expressive timing: <span >{{this.expressiveness_tempo}}% <div class=slider_container><input type="range" class="form-control-range slider" min=0 max=300 v-model="expressiveness_tempo"></div></span>
 
     <div class="input-group-prepend">
     <div class="input-group-text" style="width:160px">
@@ -223,6 +219,7 @@
     <br>
     <p v-if="this.show_midi_devices">{{this.midi_device_names}}</p><br>
     <p v-if="!this.phrasebank_loaded">Loading phrase bank {{n_loaded}}/{{n_songs}} ... This could take around a minute.</p>
+    <p v-if="this.demo.name == 'hst-performance anthem'">Anthem demo: phrase {{this.demo.line}} bar {{this.demo.bar}} <span v-if="this.demo.locked">locked</span></p>
 
   </div>
 
@@ -256,8 +253,9 @@
   <!-- Next phrase -->
   <div class="col-1">
     <p>Next phrase:</p>
-    <PhraseFilter v-on:set_filter="set_filter"/>
-    <PhraseSelect ref="phrase_selector" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
+    <PhraseFilter v-if="this.demo.name == 'none'" v-on:set_filter="set_filter"/>
+    <PhraseSelectDemo v-if="this.demo.name != 'none'" ref="phrase_selector_demo" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
+    <PhraseSelect v-if="this.demo.name == 'none'" ref="phrase_selector" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
   </div>
 </div>
 </div>
@@ -296,6 +294,7 @@ import InterfaceFixed from './components/InterfaceFixed.vue'
 import InterfaceMovable from './components/InterfaceMovable.vue'
 import PhraseFilter from './components/PhraseFilter.vue'
 import PhraseSelect from './components/PhraseSelect.vue'
+import PhraseSelectDemo from './components/PhraseSelectDemo.vue'
 const axios = require('axios').default
 const d3 = require("d3")
 const mm = require("@magenta/music")
@@ -312,13 +311,14 @@ export default {
     InterfaceFixed,
     InterfaceMovable,
     PhraseFilter,
-    PhraseSelect
-  },
+    PhraseSelect,
+    PhraseSelectDemo
+},
   data: function(){
     return{
       // Constants (not really)
       BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
-      DEBUG: true,
+      DEBUG: false,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
       // Chord playback
@@ -373,6 +373,7 @@ export default {
 
       // Interfacing (outside)
       bpm: 60,
+      next_bpm: 60,
       velocity_scale: 10,
       playing: false,
       loaded: false,
@@ -429,6 +430,16 @@ export default {
       midi_device_names: [],
       midi_device: 0,
       midi_channel: 1,
+
+      // Demos
+      demo: {
+        name: 'none',
+        bar: -1,
+        line: 0,
+        chord_seq: ['1', '1', '6', '4', '2', '4', '6', '4', '1', '5', '4', '6', '2', '1', '4', '1', '1', '1', '6', '4', '4', '1', '2', '1'],
+        phrase_seq: ['038_B', '050_B', '050_B', '080_C', '080_C', '132_A', '132_A', '080_C'],
+        locked: true,
+      }
     }
   },
   computed: {
@@ -549,6 +560,9 @@ export default {
         let keys = Object.keys(this.allData).slice(1)
         id = keys[Math.floor(Math.random() * keys.length)]
       }
+      if (this.demo.name != "none"){
+        id = this.demo.phrase_seq[this.demo.line]
+      }
       let data = this.allData[id]
       this.songID = data.songID
       this.original_noteseq_mixed = data.original_noteseq_mixed
@@ -599,7 +613,12 @@ export default {
       setTimeout(() => {  this.place_barlines_and_player(); }, 3000)
 
       // Update next phrases
-      this.update_next_phrases()
+      if (this.demo.name == 'hst-performance anthem'){
+        this.update_next_phrases_demo()
+      }
+      else{
+        this.update_next_phrases()
+      }
     },
 
     get_data_all(){
@@ -624,7 +643,7 @@ export default {
 
               for (let i=0; i<n_songs; i++){
                 if (this.DEBUG){
-                  axios.get(backend_path + '/get_data_all_idx', {params: {idx: 3}})
+                  axios.get(backend_path + '/get_data_all_idx', {params: {idx: 0}})
                   .then(response => {
                     this.n_loaded ++
                     let data_in = response.data
@@ -662,6 +681,40 @@ export default {
         })
     },
 
+    get_data_anthem(){
+      let n_songs = 0
+      let backend_path = this.BACKEND_PATH
+      axios.get(backend_path + '/get_data_anthem')
+        .then(response => {
+              let data_in = response.data
+              if (!(data_in[0] > 0)){
+                data_in = JSON.parse(response.data)
+              }
+              this.allData = {'edge_weights': data_in[1][1]}
+              this.edge_weights = data_in[1][1]
+              n_songs = data_in[0]
+              this.n_songs = n_songs
+
+              for (let i=0; i<n_songs; i++){
+                axios.get(backend_path + '/get_data_anthem_idx', {params: {idx: i}})
+                  .then(response => {
+                    this.n_loaded ++
+                    let data_in = response.data
+                    if (data_in[0] != 0){
+                      data_in = JSON.parse(response.data)
+                    }
+                    let key = data_in[1][0]
+                    let val = data_in[1][1]
+                    this.allData[key] = val
+                    if (Object.keys(this.allData).length == n_songs+1){
+                      this.get_data()
+                      this.phrasebank_loaded = true
+                    }
+              })
+              }
+        })
+    },
+
     // Interfacing (player)
     player_play(){
       if (this.loaded){
@@ -669,14 +722,18 @@ export default {
           if (this.t % this.STEP_SIZE == 0){
             // Reset at t = 0
             if (this.t == 0){
-              // this.altered_noteseq.notes = []
               
               // Next phrase
               if (this.next_phrase_idx != -1){
                 this.get_data(this.next_phrases_id[this.next_phrase_idx], false)
                 this.next_phrase_idx = -1
-                this.update_next_phrases()
-                this.$refs.phrase_selector.reset()
+                if (this.demo.name == 'hst-performance anthem'){
+                  this.update_next_phrases_demo()
+                }
+                else{
+                  this.update_next_phrases()
+                  this.$refs.phrase_selector.reset()
+                }
               }
             }
             this.player_query_step()
@@ -689,6 +746,11 @@ export default {
           this.t += 4;
           if (this.t == 16){
               this.t = 0
+              
+              if (!this.demo.locked && this.demo.line < this.demo.phrase_seq.length - 2){
+                this.demo.line ++
+                this.next_phrase_idx = 0
+              }
           }
         }
       }
@@ -706,13 +768,31 @@ export default {
       this.altered_chd_mat =  Array(16).fill(Array(36).fill(0))
       this.altered_vis.redraw()
       this.update_overlay()
-    },
+    }, 
 
     player_query_step(){
+
+      // Chord input behaviors
+      if (this.demo.name != 'none' && this.demo.line > 0){
+        if (this.demo.bar >= this.demo.chord_seq.length){
+          this.playing = false
+          return
+        }
+        this.demo.bar ++
+        if (this.current_chd == ''){
+          this.$refs.dial.keydown_functions(
+            new KeyboardEvent('keydown', {
+              'key': this.demo.chord_seq[this.demo.bar]
+            })
+          )
+        }
+      }
       if (this.current_chd == ''){
         this.playing = false
         return
       }
+
+      // tempo
       
       let [tempo_changes, window_len] = this.get_tempo_changes()
       setTimeout(() => {  this.player_play(); }, window_len * 1000)
@@ -730,6 +810,8 @@ export default {
         }, window_len * 250);
       }
       high_light_step(this.t)
+
+      this.bpm = this.next_bpm
 
       // Clean up at song start
       if (this.t == 0){
@@ -770,21 +852,24 @@ export default {
       this.altered_noteseq.notes = this.altered_noteseq.notes.concat(new_notes)  
       let quant_note_seq = this.notes_to_quant_noteseq(new_notes)
       let noteseq = unquantizeSequence(quant_note_seq)
-      noteseq = this.apply_articulation(noteseq)
+      // noteseq = this.apply_articulation(noteseq)
 
 
       // Set tompo curve
       let now = Tone.Transport.now()
       Tone.Transport.bpm.setValueAtTime(60, now)
-      for (let i=0; i<tempo_changes.length; i++){
-        Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], now + tempo_changes[i][0])
+      console.log(tempo_changes)
+      Tone.Transport.bpm.setValueAtTime(tempo_changes[0][1], now + tempo_changes[0][0])
+      for (let i=1; i<tempo_changes.length-1; i++){
+        console.log(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
+        Tone.Transport.bpm.rampTo(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
       }
 
       // Restart the player
       if (player.isPlaying()){
         player.stop()
       }
-      noteseq.totalTime = 6 // Somehow this fixes a bug where the last bar is not played???
+      noteseq.totalTime = 6 
       player.start(noteseq)
       this.altered_noteseqs[(this.t-this.t%4)/4] = this.altered_noteseq
 
@@ -1013,36 +1098,63 @@ export default {
     get_tempo_changes(){
       // Calculate the tempo changes for the phrase, then return the relative part
 
-      let notes = this.original_noteseq_mel.notes
+      // let notes = this.original_noteseq_mel.notes
+      // notes.sort(function (a,b){return a.startTime - b.startTime})
+
+      // let out = [] //[[onset_step, lengthened], ...]
+      // for (let i=0; i<notes.length; i++){
+      //   let note = notes[i]
+      //   let dur = Math.round((note.endTime - note.startTime)/0.25)
+      //   let lengthened = false
+        
+      //   // TL1
+      //   if (i > 0 && i < notes.length - 1){
+      //     let pre_dur = Math.round((notes[i-1].endTime - notes[i-1].startTime)/0.25)
+      //     let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
+      //     if (pre_dur == dur && next_dur > dur){
+      //       lengthened = true
+      //     }
+      //   }
+
+      //   // TL2
+      //   if (i < notes.length - 1){
+      //     let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
+      //     if (next_dur >= dur * 3){
+      //       lengthened = true
+      //     }
+      //   }
+
+      //   out.push([Math.round(note.startTime/0.25), lengthened])
+      // }
+
+      let notes = this.original_noteseq.notes
       notes.sort(function (a,b){return a.startTime - b.startTime})
 
       let out = [] //[[onset_step, lengthened], ...]
+      let bins = []
+      let sum_velo = 0
+      for (let i=0; i<65; i++){
+        bins.push([])
+      }
       for (let i=0; i<notes.length; i++){
         let note = notes[i]
-        let dur = Math.round((note.endTime - note.startTime)/0.25)
-        let lengthened = false
-        
-        // TL1
-        if (i > 0 && i < notes.length - 1){
-          let pre_dur = Math.round((notes[i-1].endTime - notes[i-1].startTime)/0.25)
-          let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
-          if (pre_dur == dur && next_dur > dur){
-            lengthened = true
-          }
-        }
-
-        // TL2
-        if (i < notes.length - 1){
-          let next_dur = Math.round((notes[i+1].endTime - notes[i+1].startTime)/0.25)
-          if (next_dur >= dur * 3){
-            lengthened = true
-          }
-        }
-
-        out.push([Math.round(note.startTime/0.25), lengthened])
+        sum_velo = sum_velo + note.velocity
+        bins[Math.round(note.startTime/0.25)].push(note.velocity)
       }
+      let avg_velo = sum_velo / notes.length
+
+      for (let i=0; i<65; i++){
+        let sum = bins[i].reduce((a, b) => a + b, 0);
+        if (sum < avg_velo * bins[i].length){
+          out.push([i, true])
+        }
+        else if(bins[i].length > 0){
+          out.push([i, false])
+        }
+      }
+     
       // convert out to bpm changes
-      let bpm_changes = [[0.001, this.bpm]] // [[time(second), bpm], ...]
+      let bpm_changes = [[0.001, this.bpm]] // [[time(second), bpm, step], ...]
       let t = 0
       let cur_step = 0
       let slowed = 0
@@ -1064,18 +1176,18 @@ export default {
         if (i == out.length - 1){
           slice_len[3] = t + 15 / bpm * (64 - step)
         }
-        
+
         if (lengthened){
           // Slow down
-          bpm /= (0.05 * this.expressiveness_tempo / 100) + 1
-          bpm_changes.push([t, bpm])
+          bpm /= (0.015 * this.expressiveness_tempo / 100) + 1
           slowed += 1
+          bpm_changes.push([t, bpm, step])
         }
         else if(!lengthened && slowed > 0){
           // Speed up
-          bpm *= ((0.05 * this.expressiveness_tempo / 100) + 1) ** slowed
+          bpm *= ((0.015 * this.expressiveness_tempo / 100) + 1) ** slowed
           slowed = 0
-          bpm_changes.push([t, bpm])
+          bpm_changes.push([t, bpm, step])
         }
         cur_step = step
       }
@@ -1086,13 +1198,13 @@ export default {
         }
       }
       
-      let changes_out = [[0.001, this.bpm]]
+      let changes_out = [[0.001, this.bpm, 0]]
       for (let i=0; i<bpm_changes.length; i++){
-        let [t, bpm] = bpm_changes[i]
+        let [t, bpm, step] = bpm_changes[i]
         
         if (this.t == 0){
           if (t < slice_len[0] && t != 0.001){
-            changes_out.push([t, bpm])
+            changes_out.push([t, bpm, step % 16])
           } 
         }
         else{
@@ -1101,7 +1213,7 @@ export default {
           }
           if (t > slice_len[this.t / 4 - 1] && t < slice_len[this.t / 4]){
             t -= slice_len[this.t / 4 - 1]
-            changes_out.push([t, bpm])
+            changes_out.push([t, bpm, step % 16])
           }
         }
       }
@@ -1110,8 +1222,29 @@ export default {
         slice_len[j] -= slice_len[j-1]
       }
 
+      let out_out = [[0.001, this.bpm]]
+      changes_out.push([0, this.bpm, 16])
+      // Convert in to continuous changes
+      let cur_t = 0
+      for (let i=1; i < changes_out.length; i ++){
+        let last_bpm = changes_out[i-1][1]
+        let last_step = changes_out[i-1][2]
+        let bpm = changes_out[i][1]
+        let step = changes_out[i][2]
+        
+        // get the rel tempo change in the bar
+        let ratio = ((this.next_bpm - this.bpm) / this.bpm) * (step / 16) + 1
+        bpm *= ratio
+        changes_out[i][1] = bpm
 
-      return [changes_out, slice_len[this.t / 4]]
+        // get the new t
+        cur_t += (step - last_step) * 30 / (bpm + last_bpm)
+        out_out.push([cur_t, bpm])
+      }
+      
+      // end point
+      
+      return [out_out, cur_t]
     },
 
     // Interfacing (input type)
@@ -1673,6 +1806,12 @@ export default {
       this.next_phrase_idx = i
     },
 
+    update_next_phrases_demo(){
+      let id = this.demo.phrase_seq[this.demo.line + 1]
+      this.next_phrases_id[0] = id
+      this.next_phrases[0] = this.allData[id].original_noteseq_acc
+    },
+
     // Next phrase filter
     set_filter(filter){
       this.filter_h = filter[0]
@@ -1735,12 +1874,30 @@ export default {
       this.midi_channel = i
     },
 
+    follow_tempo(){
+      this.next_bpm = this.bpm
+    }
+
   },
 
 
   mounted(){
+    // Demo versions
+    if (this.demo.name == 'none'){
+      this.demo.name = document.querySelector('title').innerHTML
+      if (this.demo.name != 'hst-performance anthem'){
+        this.demo.name = 'none'
+      }
+    }
+
     this.get_songdata()
-    this.get_data_all()
+
+    if (this.demo.name == 'hst-performance anthem'){
+      this.get_data_anthem()
+    }
+    else{
+      this.get_data_all()
+    }
     player.loadAllSamples().then(()=>{ 
         this.loaded = true
         this.altered_noteseq.notes = []
@@ -1779,12 +1936,32 @@ export default {
       if (['r','R'].includes(key)){
         this.replay_all()
       }
+      if (['l','L'].includes(key)){
+        if (this.demo.locked){
+          this.demo.locked = false
+        }
+      }
+      if ([' '].includes(key)){
+        event.preventDefault()
+      }
       if (['m'].includes(key)){
       console.log(this.DEBUG)
         if (this.DEBUG){
-          console.log(this.original_noteseq)
+          console.log("DEBUG")
+          console.log(this.demo.name)
         }
       }
+    })
+
+    // Mouse wheel
+    document.addEventListener('wheel', (event) => {
+      if (this.next_bpm > 30 && this.next_bpm < 200){
+        event.preventDefault()
+        this.next_bpm -= event.deltaY / 102
+      }
+    },
+    {
+      passive: false 
     })
 
     // Cell highlighting - original (copied form educational)
@@ -1838,6 +2015,7 @@ export default {
 
     let original_observer = new MutationObserver(original_callback);
     original_observer.observe(original_controls, mutationObserver_config);
+
   }
 
 

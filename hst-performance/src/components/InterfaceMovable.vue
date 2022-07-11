@@ -224,6 +224,7 @@ export default {
       d3.select('#outer_path'+i).classed("outer_path_active",true)
     },
     keydown_functions(event){
+      console.log(event)
       let key = event.key
       if (key == "Alt"){
         event.preventDefault()

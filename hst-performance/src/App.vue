@@ -219,7 +219,7 @@
     <br>
     <p v-if="this.show_midi_devices">{{this.midi_device_names}}</p><br>
     <p v-if="!this.phrasebank_loaded">Loading phrase bank {{n_loaded}}/{{n_songs}} ... This could take around a minute.</p>
-    <p v-if="this.demo.name == 'hst-performance anthem'">Anthem demo: phrase {{this.demo.line}} bar {{this.demo.bar}} <span v-if="this.demo.locked">locked</span></p>
+    <p v-if="this.demo.name == 'hst-performance anthem'">Anthem demo: phrase {{this.demo.line}} bar {{this.demo.bar}} <span v-if="this.demo.locked">locked</span><span v-if="this.demo.locked1">locked</span></p>
 
   </div>
 
@@ -245,7 +245,8 @@
     <!-- Interface UIs -->  
     <div v-if="this.loaded && ! this.hide_vis_input">
     <InterfaceFixed v-if="input_type == 'fixed'" v-on:update_current_chord="update_current_chord"/>
-    <InterfaceMovable ref="dial" v-if="input_type == 'movable'" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
+    <InterfaceMovable ref="dial" v-if="input_type == 'movable' && !this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
+    <InterfaceMovableWheel ref="dial_wheel" v-if="input_type == 'movable' && this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
     </div>
 
   </div>
@@ -253,9 +254,11 @@
   <!-- Next phrase -->
   <div class="col-1">
     <p>Next phrase:</p>
-    <PhraseFilter v-if="this.demo.name == 'none'" v-on:set_filter="set_filter"/>
+    <PhraseFilter v-if="this.demo.name == 'none' && !this.wheel.connected" v-on:set_filter="set_filter"/>
+    <PhraseFilterWheel ref="phrase_filter_wheel" v-if="this.demo.name == 'none' && this.wheel.connected" v-on:set_filter="set_filter"/>
     <PhraseSelectDemo v-if="this.demo.name != 'none'" ref="phrase_selector_demo" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
-    <PhraseSelect v-if="this.demo.name == 'none'" ref="phrase_selector" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
+    <PhraseSelect v-if="this.demo.name == 'none' && !this.wheel.connected" ref="phrase_selector" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
+    <PhraseSelect v-if="this.demo.name == 'none' && this.wheel.connected" id="phrase_select_wheel" ref="phrase_selector" v-bind:noteseqs="this.next_phrases" v-on:update_next_phrase="update_next_phrase"/>
   </div>
 </div>
 </div>
@@ -295,12 +298,15 @@ import InterfaceMovable from './components/InterfaceMovable.vue'
 import PhraseFilter from './components/PhraseFilter.vue'
 import PhraseSelect from './components/PhraseSelect.vue'
 import PhraseSelectDemo from './components/PhraseSelectDemo.vue'
+import InterfaceMovableWheel from './components/InterfaceMovableWheel.vue'
+import PhraseFilterWheel from './components/PhraseFilterWheel.vue'
 const axios = require('axios').default
 const d3 = require("d3")
 const mm = require("@magenta/music")
 const _ = require("html-midi-player")
 const Tone = require("tone")
-const {WebMidi} = require("webmidi");
+const {WebMidi} = require("webmidi")
+const Faye = require('faye')
 console.log(_)
 var player = new mm.SoundFontPlayer('https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus')
 // var debug_player = new mm.SoundFontPlayer('https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus')
@@ -312,7 +318,9 @@ export default {
     InterfaceMovable,
     PhraseFilter,
     PhraseSelect,
-    PhraseSelectDemo
+    PhraseSelectDemo,
+    InterfaceMovableWheel,
+    PhraseFilterWheel
 },
   data: function(){
     return{
@@ -433,12 +441,127 @@ export default {
 
       // Demos
       demo: {
-        name: 'none',
+        name: 'none',//'hst-performance anthem', 'none'
         bar: -1,
         line: 0,
-        chord_seq: ['1', '1', '6', '4', '2', '4', '6', '4', '1', '5', '4', '6', '2', '1', '4', '1', '1', '1', '6', '4', '4', '1', '2', '1'],
-        phrase_seq: ['038_B', '050_B', '050_B', '080_C', '080_C', '132_A', '132_A', '080_C'],
+        chord_seq: ['1', '4', '5', '5', '5', '1', 's5', '1', '1', '2', '1', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 's5', '1'],
+        phrase_seq: ['038_B', '050_B', '000_A', '001_A', '002_A', '003_A', '004_A', '005_A', '005_A'],
         locked: true,
+        lock_passed: false,
+        locked1: true,
+        tempo_curve: [[13.71      , 71.42857143],
+       [14.55      , 80.        ],
+       [15.3       , 82.19178082],
+       [16.03      , 83.33333333],
+       [16.75      , 81.08108108],
+       [17.49      , 78.94736842],
+       [18.25      , 83.33333333],
+       [18.97      , 80.        ],
+       [19.72      , 84.50704225],
+       [20.43      , 77.92207792],
+       [21.2       , 83.33333333],
+       [21.92      , 81.08108108],
+       [22.66      , 80.        ],
+       [23.41      , 83.33333333],
+       [24.13      , 83.33333333],
+       [24.85      , 77.92207792],
+       [25.62      , 83.33333333],
+       [26.34      , 83.33333333],
+       [27.06      , 83.33333333],
+       [27.78      , 82.19178082],
+       [28.51      , 82.19178082],
+       [29.24      , 81.08108108],
+       [29.98      , 81.08108108],
+       [30.72      , 80.        ],
+       [31.47      , 75.94936709],
+       [32.26      , 85.71428571],
+       [32.96      , 77.92207792],
+       [33.73      , 84.50704225],
+       [34.44      , 84.50704225],
+       [35.15      , 81.08108108],
+       [35.89      , 75.        ],
+       [36.69      , 81.08108108],
+       [37.43      , 81.08108108],
+       [38.17      , 86.95652174],
+       [38.86      , 84.50704225],
+       [39.57      , 83.33333333],
+       [40.29      , 89.55223881],
+       [40.96      , 84.50704225],
+       [41.67      , 80.        ],
+       [42.42      , 84.50704225],
+       [43.13      , 83.33333333],
+       [43.85      , 85.71428571],
+       [44.55      , 84.50704225],
+       [45.26      , 85.71428571],
+       [45.96      , 83.33333333],
+       [46.68      , 82.19178082],
+       [47.41      , 76.92307692],
+       [48.19      , 80.        ],
+       [48.94      , 77.92207792],
+       [49.71      , 85.71428571],
+       [50.41      , 81.08108108],
+       [51.15      , 77.92207792],
+       [51.92      , 82.19178082],
+       [52.65      , 84.50704225],
+       [53.36      , 81.08108108],
+       [54.1       , 81.08108108],
+       [54.84      , 78.94736842],
+       [55.6       , 81.08108108],
+       [56.34      , 80.        ],
+       [57.09      , 78.94736842],
+       [57.85      , 81.08108108],
+       [58.59      , 81.08108108],
+       [59.33      , 84.50704225],
+       [60.04      , 68.96551724],
+       [60.91      , 73.17073171],
+       [61.73      , 81.08108108],
+       [62.47      , 76.92307692],
+       [63.25      , 80.        ],
+       [64.        , 73.17073171],
+       [64.82      , 77.92207792],
+       [65.59      , 75.94936709],
+       [66.38      , 81.08108108],
+       [67.12      , 81.08108108],
+       [67.86      , 75.94936709],
+       [68.65      , 77.92207792],
+       [69.42      , 78.94736842],
+       [70.18      , 80.        ],
+       [70.93      , 78.94736842],
+       [71.69      , 80.        ],
+       [72.44      , 76.92307692],
+       [73.22      , 77.92207792],
+       [73.99      , 81.08108108],
+       [74.73      , 77.92207792],
+       [75.5       , 76.92307692],
+       [76.28      , 80.        ],
+       [77.03      , 80.        ],
+       [77.78      , 80.        ],
+       [78.53      , 77.92207792],
+       [79.3       , 74.07407407],
+       [80.11      , 76.92307692],
+       [80.89      , 82.19178082],
+       [81.62      , 75.        ],
+       [82.42      , 80.        ],
+       [83.17      , 81.08108108],
+       [83.91      , 76.92307692],
+       [84.69      , 15.34526854]]
+      },
+
+      wheel:{
+        conncected: false,
+
+        // Pedals
+        gas: 0,
+        brake: 0,
+        acc_ratio: 30,
+        clutched: false,
+
+        // Wheel
+        turn_idx: 0,
+      
+        // wheel_shift
+        wheel_shift: 0,
+        wheel_shift_offset: 0,
       }
     }
   },
@@ -643,7 +766,7 @@ export default {
 
               for (let i=0; i<n_songs; i++){
                 if (this.DEBUG){
-                  axios.get(backend_path + '/get_data_all_idx', {params: {idx: 0}})
+                  axios.get(backend_path + '/get_data_all_idx', {params: {idx: 5}})
                   .then(response => {
                     this.n_loaded ++
                     let data_in = response.data
@@ -747,7 +870,12 @@ export default {
           if (this.t == 16){
               this.t = 0
               
-              if (!this.demo.locked && this.demo.line < this.demo.phrase_seq.length - 2){
+              if (!this.demo.locked && !this.demo.locked1 && this.demo.line < this.demo.phrase_seq.length - 1){
+                this.demo.line ++
+                this.next_phrase_idx = 0
+              }
+              if (!this.demo.locked && this.demo.locked1 && !this.demo.lock_passed){
+                this.demo.lock_passed = true
                 this.demo.line ++
                 this.next_phrase_idx = 0
               }
@@ -773,28 +901,60 @@ export default {
     player_query_step(){
 
       // Chord input behaviors
-      if (this.demo.name != 'none' && this.demo.line > 0){
+      if (this.demo.name != 'none' && this.demo.line > 1){
         if (this.demo.bar >= this.demo.chord_seq.length){
           this.playing = false
           return
         }
         this.demo.bar ++
         if (this.current_chd == ''){
-          this.$refs.dial.keydown_functions(
-            new KeyboardEvent('keydown', {
-              'key': this.demo.chord_seq[this.demo.bar]
-            })
-          )
+          if (!this.demo.chord_seq[this.demo.bar].includes('s')){
+            this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': this.demo.chord_seq[this.demo.bar]
+              })
+            )
+          }
+          else{
+            this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': 'z'
+              })
+            )
+            this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': this.demo.chord_seq[this.demo.bar].slice(1)
+              })
+            )
+            this.$refs.dial.keyup_functions(
+              new KeyboardEvent('keydown', {
+                'key': 'z'
+              })
+            )
+          }
         }
       }
       if (this.current_chd == ''){
         this.playing = false
         return
       }
+      this.playing = true
 
       // tempo
-      
-      let [tempo_changes, window_len] = this.get_tempo_changes()
+      let tempo_changes = []
+      let window_len
+      if (this.demo.bar > -1){
+        let slice = this.demo.tempo_curve.slice(this.demo.bar * 4, this.demo.bar * 4 + 4)
+        console.log(slice)
+        window_len = slice[3][0] - slice[0][0] + 60 / slice[3][1]
+        for (let i=0; i<4; i++){
+          tempo_changes[i] = [slice[i][0] - slice[0][0] + 0.001, slice[i][1]]
+        }
+        console.log(tempo_changes)
+      }
+      else{
+        [tempo_changes, window_len] = this.get_tempo_changes()
+      }
       setTimeout(() => {  this.player_play(); }, window_len * 1000)
       // Update cell highlighting
       for (let i=this.t; i<this.t+4; i++){
@@ -830,11 +990,13 @@ export default {
       this.chord_seq.push(this.current_chd)
       let root = parseInt(this.current_chd.slice(0,-2))
       let chroma = this.current_chd.slice(-2)
-      this.current_chd = ''
-
-      // Update string
       this.altered_chd_str[this.t] = this.current_chd_text
-      this.current_chd_text = ''
+
+      if (!this.wheel.clutched || !this.wheel.connected){
+        // Stop the player at the next query step unless a new chord is entered
+        this.current_chd = ''
+        this.current_chd_text = ''
+      }
       
       // Query and update noteseq
       let chord_seq_maxlen = 8 / this.STEP_SIZE
@@ -856,20 +1018,12 @@ export default {
 
 
       // Set tompo curve
-      let now = Tone.Transport.now()
-      Tone.Transport.bpm.setValueAtTime(60, now)
+      Tone.Transport.bpm.setValueAtTime(60, Tone.Transport.now())
+      console.log(60, Tone.Transport.now())
+      for (let i=0; i<tempo_changes.length; i++){
+        Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], Tone.Transport.now() + tempo_changes[i][0])
+      }
       
-      if (this.demo.name == 'none'){
-        Tone.Transport.bpm.setValueAtTime(tempo_changes[0][1], now + tempo_changes[0][0])
-        for (let i=1; i<tempo_changes.length-1; i++){
-          Tone.Transport.bpm.rampTo(tempo_changes[i][1], tempo_changes[i+1][0] - tempo_changes[i][0], now + tempo_changes[i][0])
-        }
-      }
-      else{
-        for (let i=0; i<tempo_changes.length; i++){
-          Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], now + tempo_changes[i][0])
-        }
-      }
 
       // Restart the player
       if (player.isPlaying()){
@@ -921,6 +1075,14 @@ export default {
         this.altered_chd_mat[i] = new_chd_mat
       ]
       this.update_overlay()
+
+      // Wheel
+      if (this.wheel.connected){
+        this.$refs.dial_wheel.update_offest(this.wheel.turn_idx)
+        this.next_bpm = this.bpm + (this.wheel.gas - this.wheel.brake) * this.wheel.acc_ratio
+        this.wheel.wheel_shift_offset = 4 - this.wheel.sheel_shift
+        this.wheel.sheel_shift = 0
+      }
     },
 
     notes_to_quant_noteseq(notes){
@@ -1158,7 +1320,7 @@ export default {
           out.push([i, false])
         }
       }
-     
+
       // convert out to bpm changes
       let bpm_changes = [[0.001, this.bpm]] // [[time(second), bpm, step], ...]
       let t = 0
@@ -1228,29 +1390,53 @@ export default {
         slice_len[j] -= slice_len[j-1]
       }
 
-      let out_out = [[0.001, this.bpm]]
-      changes_out.push([0, this.bpm, 16])
-      // Convert in to continuous changes
-      let cur_t = 0
-      for (let i=1; i < changes_out.length; i ++){
-        let last_bpm = changes_out[i-1][1]
-        let last_step = changes_out[i-1][2]
-        let bpm = changes_out[i][1]
-        let step = changes_out[i][2]
-        
-        // get the rel tempo change in the bar
-        let ratio = ((this.next_bpm - this.bpm) / this.bpm) * (step / 16) + 1
-        bpm *= ratio
-        changes_out[i][1] = bpm
+      changes_out.push([0, this.next_bpm, 16])
 
-        // get the new t
-        cur_t += (step - last_step) * 30 / (bpm + last_bpm)
-        out_out.push([cur_t, bpm])
+      for (let i=0; i<changes_out.length; i++){
+        let step = changes_out[i][2]
+        let ratio = ((this.next_bpm - this.bpm) / this.bpm) * (step / 16) + 1
+        changes_out[i][1] *= ratio
       }
-      
-      if (this.demo.name != "none"){
-        return [changes_out.slice(0,-1), slice_len[this.t / 4]]
+      let dense_changes = [] //[bpm, ...]
+      // Interpolate 
+      for (let i=0; i < 16; i++){
+        let before_step = 0
+        let before_bpm = 0
+        let after_step = 0
+        let after_bpm = 0
+        for (let j=0; j < changes_out.length; j++){
+          let step = changes_out[j][2]
+          let bpm = changes_out[j][1]
+
+          if (step <= i){
+            before_step = step
+            before_bpm = bpm
+          }
+          if (step >= i){
+            after_step = step
+            after_bpm = bpm
+            break
+          }
+        }
+        if (before_step == after_step){
+          dense_changes.push(before_bpm)
+        }
+        else{
+          let r_before = (i - before_step) / (after_step - before_step)
+          dense_changes.push(before_bpm * r_before + (1 - r_before) * after_bpm)
+        }
       }
+
+      let out_out = [[0.001, this.bpm]]
+      // Convert into continuous changes
+      let cur_t = 0
+      for (let i = 1; i < 16; i ++){
+        let prev_bpm = out_out[i-1][1]
+        cur_t += 15 / prev_bpm
+        out_out.push([cur_t, dense_changes[i]])
+      }
+      cur_t += 15 / dense_changes[15]
+        
       return [out_out, cur_t]
     },
 
@@ -1263,6 +1449,7 @@ export default {
       this.$refs.dial.draw_dial(this.$refs.dial.outer_text(key))
     },
     update_current_chord(chd, text){
+      console.log(chd, text)
       this.current_chd = chd
       this.current_chd_text = text
       if (!this.playing){
@@ -1272,8 +1459,16 @@ export default {
       else{
         // Pre-update overlays and chord texts
         // Overlay and notemat
-        let root = parseInt(this.current_chd.slice(0,-2))
-        let chroma = this.current_chd.slice(-2)
+        let root
+        let chroma
+        if (this.current_chd.includes('sd')){
+          root = parseInt(this.current_chd.slice(0,-4))
+          chroma = this.current_chd.slice(-2)
+        }
+        else{
+          root = parseInt(this.current_chd.slice(0,-2))
+          chroma = this.current_chd.slice(-2)
+        }
         let new_chd_mat = Array(36).fill(0)
         let t = this.t
         new_chd_mat[root] = 1
@@ -1865,7 +2060,7 @@ export default {
           this.midi_device_names = []
           this.show_midi_devices = true
           WebMidi.outputs.forEach(output => this.midi_device_names.push(output.name))
-          this.midi_device = WebMidi.outputs[0]
+          this.midi_device = WebMidi.outputs[1]
         })
         .catch(err => alert(err));
     },
@@ -1883,6 +2078,48 @@ export default {
 
     follow_tempo(){
       this.next_bpm = this.bpm
+    },
+
+    // Wheel
+    apply_velo(){
+      // // Adjust velo
+      // this.next_bpm += (this.wheel.gas - this.wheel.brake)
+      
+      // // if (this.wheel.velo < 0){
+      // //   this.wheel.velo += this.wheel.drag
+      // //   if (this.wheel.velo > 0){
+      // //     this.wheel.velo = 0
+      // //   }
+      // // }
+
+      // // if (this.wheel.velo > 0){
+      // //   this.wheel.velo -= this.wheel.drag
+      // //   if (this.wheel.velo < 0){
+      // //     this.wheel.velo = 0
+      // //   }
+      // // }
+
+      // // this.next_bpm += this.wheel.velo
+      // if (this.next_bpm < 30){
+      //   this.next_bpm = 30
+      // }
+      // if (this.next_bpm > 200){
+      //   this.next_bpm = 200
+      // }
+      // // console.log(this.wheel.velo)
+
+      // setTimeout(() => {  this.apply_velo(); },  100)
+      
+    },
+
+    apply_wheel_shift(){
+      let idx = this.wheel.wheel_shift - 1
+      if (idx > -1){
+        this.$refs.phrase_selector.phrase_on_click(idx)
+      }
+      else{
+        this.$refs.phrase_selector.reset()
+      }
     }
 
   },
@@ -1948,6 +2185,11 @@ export default {
           this.demo.locked = false
         }
       }
+      if (['k','K'].includes(key)){
+        if (this.demo.locked1 && ! this.demo.locked){
+          this.demo.locked1 = false
+        }
+      }
       if ([' '].includes(key)){
         event.preventDefault()
       }
@@ -1961,15 +2203,15 @@ export default {
     })
 
     // Mouse wheel
-    document.addEventListener('wheel', (event) => {
-      if (this.next_bpm > 30 && this.next_bpm < 200){
-        event.preventDefault()
-        this.next_bpm -= event.deltaY / 102
-      }
-    },
-    {
-      passive: false 
-    })
+    // document.addEventListener('wheel', (event) => {
+    //   if (this.next_bpm > 30 && this.next_bpm < 200){
+    //     event.preventDefault()
+    //     this.next_bpm -= event.deltaY / 102
+    //   }
+    // },
+    // {
+    //   passive: false 
+    // })
 
     // Cell highlighting - original (copied form educational)
     const mutationObserver_config = { childList: true, subtree: true, attributes:true };
@@ -2023,8 +2265,77 @@ export default {
     let original_observer = new MutationObserver(original_callback);
     original_observer.observe(original_controls, mutationObserver_config);
 
-  }
+    // Wheel
+    This.apply_velo()
+    var faye_client = new Faye.Client('http://127.0.0.1:8001/');
+    faye_client.subscribe('/messages', function(message){
 
+      This.wheel.connected = true
+      This.change_input_type('movable')
+
+      // Pedal
+      if (message.type == 'gas'){
+        This.wheel.gas = message.value 
+        This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+      }
+
+      if (message.type == 'brake'){
+        This.wheel.brake = message.value 
+        This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+      }
+
+      if (message.type == 'clutch'){
+        This.wheel.clutched = !This.wheel.clutched
+        if (!This.wheel.clutched){
+          // Stop the player at the next query step unless a new chord is entered
+          This.current_chd = ''
+          This.current_chd_text = ''
+        }
+        else if (!This.playing && This.input_type == 'movable'){
+          This.$refs.dial_wheel.outer_on_click(0)
+        }
+      }
+
+      // Wheel
+      if (message.type == 'wheel_turn'){
+        if (This.input_type == 'movable'){
+          This.wheel.turn_idx = message.value
+          This.$refs.dial_wheel.outer_on_click(message.value)
+        }
+      }
+
+      // Shift
+      if (message.type == 'shift'){
+        let val = message.value
+        if (val == 1){
+          This.$refs.phrase_filter_wheel.set_circle(50, 50)
+        }
+        if (val == 2){
+          This.$refs.phrase_filter_wheel.set_circle(50, 150)
+        }
+        if (val == 3){
+          This.$refs.phrase_filter_wheel.set_circle(150, 50)
+        }
+        if (val == 4){
+          This.$refs.phrase_filter_wheel.set_circle(150, 150)
+        }
+        if (val == 5){
+          This.$refs.phrase_filter_wheel.set_circle(250, 50)
+        }
+        if (val == 6){
+          This.$refs.phrase_filter_wheel.set_circle(250, 150)
+        }
+        if (val == 0){
+          This.$refs.phrase_filter_wheel.reset()
+        }
+      }
+
+      if (message.type == 'wheel_shift'){
+        This.wheel.wheel_shift = (message.value + This.wheel.wheel_shift_offset) % 4
+        This.apply_wheel_shift()
+      }
+    })
+ },
 
 }
 
@@ -2233,4 +2544,8 @@ canvas{
     user-select: none; 
 }
 
+#phrase_select_wheel{
+    position:relative;
+    top: -1170px
+}
 </style>

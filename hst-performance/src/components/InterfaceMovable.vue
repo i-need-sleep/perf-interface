@@ -35,7 +35,8 @@ export default {
       alt: false,
       ctrl: false,
       shift: false,
-      s: false
+      s: false,
+      z: false
     }
   },
 
@@ -137,6 +138,12 @@ export default {
     },
     get_current_chord_text: function(root){
       if (this.current_chord_interval == 3){
+        if (this.current_chord_type == 'sdM'){
+          return root 
+        }
+        if (this.current_chord_type == 'sdm'){
+          return root + 'm' 
+        }
         if (this.current_chord_type == "M"){
           return root
         }
@@ -214,6 +221,9 @@ export default {
           this.current_chord_type = "m"
         }
       }
+      if (this.z){
+        this.current_chord_type = 'sd' + this.current_chord_type
+      }
       this.update_center_text(this.get_current_chord_text(scale_root_text))
       this.$emit('update_current_chord', this.current_chord_root + this.current_chord_type + this.current_chord_interval, this.get_current_chord_text(scale_root_text))
 
@@ -224,7 +234,6 @@ export default {
       d3.select('#outer_path'+i).classed("outer_path_active",true)
     },
     keydown_functions(event){
-      console.log(event)
       let key = event.key
       if (key == "Alt"){
         event.preventDefault()
@@ -241,6 +250,10 @@ export default {
       if (['S','s'].includes(key)){
         event.preventDefault()
         this.s = true
+      }
+      if (['Z','z'].includes(key)){
+        event.preventDefault()
+        this.z = true
       }
       if (['1','2','3','4','5','6','7'].includes(key)){
         event.preventDefault()
@@ -276,6 +289,10 @@ export default {
       if (['S','s'].includes(key)){
         event.preventDefault()
         this.s = false
+      }
+      if (['Z','z'].includes(key)){
+        event.preventDefault()
+        this.z = false
       }
     }
   },

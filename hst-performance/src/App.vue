@@ -544,8 +544,40 @@ export default {
        [82.42      , 80.        ],
        [83.17      , 81.08108108],
        [83.91      , 76.92307692],
-       [84.69      , 15.34526854]]
-      },
+       [84.69      , 15.34526854]],
+
+        sustain:
+          [[0.00909090909090909, 4.0],
+          [4.013636363636364, 6.0],
+          [6.013636363636364, 7.995454545454545],
+          [8.018181818181818, 18.0],
+          [18.013636363636362, 20.0],
+          [20.009090909090908, 23.995454545454546],
+          [24.013636363636362, 26.0],
+          [26.009090909090908, 28.0],
+          [28.013636363636362, 34.0],
+          [34.013636363636365, 36.0],
+          [36.01363636363636, 37.99545454545454],
+          [38.01363636363636, 44.0],
+          [44.00909090909091, 46.0],
+          [46.00909090909091, 48.0],
+          [48.01363636363636, 51.99545454545454],
+          [52.018181818181816, 53.0],
+          [53.01363636363636, 54.0],
+          [54.00909090909091, 55.0],
+          [55.01363636363636, 56.0],
+          [56.01363636363636, 59.0],
+          [59.01363636363636, 60.0],
+          [60.01363636363636, 68.0],
+          [68.0090909090909, 70.0],
+          [70.01363636363637, 71.99545454545454],
+          [72.01818181818182, 82.00454545454545],
+          [82.01363636363637, 84.00454545454545],
+          [84.01363636363637, 88.0],
+          [88.0090909090909, 90.0],
+          [90.01363636363637, 91.99545454545454],
+          [92.01363636363637, 95.0]],
+        },
 
       wheel:{
         conncected: false,
@@ -945,12 +977,10 @@ export default {
       let window_len
       if (this.demo.bar > -1){
         let slice = this.demo.tempo_curve.slice(this.demo.bar * 4, this.demo.bar * 4 + 4)
-        console.log(slice)
         window_len = slice[3][0] - slice[0][0] + 60 / slice[3][1]
         for (let i=0; i<4; i++){
           tempo_changes[i] = [slice[i][0] - slice[0][0] + 0.001, slice[i][1]]
         }
-        console.log(tempo_changes)
       }
       else{
         [tempo_changes, window_len] = this.get_tempo_changes()
@@ -1019,7 +1049,6 @@ export default {
 
       // Set tompo curve
       Tone.Transport.bpm.setValueAtTime(60, Tone.Transport.now())
-      console.log(60, Tone.Transport.now())
       for (let i=0; i<tempo_changes.length; i++){
         Tone.Transport.bpm.setValueAtTime(tempo_changes[i][1], Tone.Transport.now() + tempo_changes[i][0])
       }
@@ -1088,21 +1117,38 @@ export default {
     notes_to_quant_noteseq(notes){
       let out = createQuantizedNoteSequence(4, 60)
       out.tempos = [{time: 0, qpm: 60}]
+      let This = this
       for (let i=0; i<notes.length; i++){
         let note = notes[i]
         let note_start = note.startTime
         let note_end = note.endTime
-        for (let j=0; j<this.sustain.length; j++){
-          let sus_start = this.sustain[j][0]
-          let sus_end = this.sustain[j][1]
-          if (note.endTime > sus_start && note.endTime < sus_end){
-            note_end = sus_end
-            break
-          }
-          if (note.endTime < sus_start){
-            break
+        if (This.demo.bar >= 0){
+          for (let j=0; j<This.demo.sustain.length; j++){
+            let sus_start = This.demo.sustain[j][0] - 16 * (This.demo.line - 2)
+            let sus_end = This.demo.sustain[j][1] - 16 * (This.demo.line - 2)
+            if (note.endTime > sus_start && note.endTime < sus_end){
+              note_end = sus_end
+              break
+            }
+            if (note.endTime < sus_start){
+              break
+            }
           }
         }
+        else{
+            for (let j=0; j<This.sustain.length; j++){
+            let sus_start = This.sustain[j][0]
+            let sus_end = This.sustain[j][1]
+            if (note.endTime > sus_start && note.endTime < sus_end){
+              note_end = sus_end
+              break
+            }
+            if (note.endTime < sus_start){
+              break
+            }
+          }
+        }
+        
         out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), velocity: note.velocity})
       }
       return out
@@ -1449,7 +1495,6 @@ export default {
       this.$refs.dial.draw_dial(this.$refs.dial.outer_text(key))
     },
     update_current_chord(chd, text){
-      console.log(chd, text)
       this.current_chd = chd
       this.current_chd_text = text
       if (!this.playing){

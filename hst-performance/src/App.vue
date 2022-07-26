@@ -444,7 +444,7 @@ export default {
         name: 'none',//'hst-performance anthem', 'none'
         bar: -1,
         line: 0,
-        chord_seq: ['1', '4', '5', '5', '5', '1', 's5', '1', '1', '2', '1', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 's5', '1'],
+        chord_seq: ['1', '4', '5', '5', '5', '1', 'x5', '1', '1', '2', '1', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 'x5', '1'],
         phrase_seq: ['038_B', '050_B', '000_A', '001_A', '002_A', '003_A', '004_A', '005_A', '005_A'],
         locked: true,
         lock_passed: false,
@@ -940,15 +940,8 @@ export default {
         }
         this.demo.bar ++
         if (this.current_chd == ''){
-          if (!this.demo.chord_seq[this.demo.bar].includes('s')){
-            this.$refs.dial.keydown_functions(
-              new KeyboardEvent('keydown', {
-                'key': this.demo.chord_seq[this.demo.bar]
-              })
-            )
-          }
-          else{
-            this.$refs.dial.keydown_functions(
+          if (this.demo.chord_seq[this.demo.bar].includes('s')){
+              this.$refs.dial.keydown_functions(
               new KeyboardEvent('keydown', {
                 'key': 'z'
               })
@@ -961,6 +954,30 @@ export default {
             this.$refs.dial.keyup_functions(
               new KeyboardEvent('keydown', {
                 'key': 'z'
+              })
+            )
+          }
+          else if (this.demo.chord_seq[this.demo.bar].includes('x')){
+              this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': 'x'
+              })
+            )
+            this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': this.demo.chord_seq[this.demo.bar].slice(1)
+              })
+            )
+            this.$refs.dial.keyup_functions(
+              new KeyboardEvent('keydown', {
+                'key': 'x'
+              })
+            )
+          }
+          else{
+            this.$refs.dial.keydown_functions(
+              new KeyboardEvent('keydown', {
+                'key': this.demo.chord_seq[this.demo.bar]
               })
             )
           }
@@ -1045,6 +1062,30 @@ export default {
       let quant_note_seq = this.notes_to_quant_noteseq(new_notes)
       let noteseq = unquantizeSequence(quant_note_seq)
       // noteseq = this.apply_articulation(noteseq)
+
+      let This = this
+      if (this.demo.line==2){
+        console.log (noteseq)
+      }
+      if (This.demo.bar >= 0){
+        for (let i=0; i<noteseq.notes.length; i++){
+          for (let j=0; j<This.demo.sustain.length; j++){
+            let sus_start = This.demo.sustain[j][0] - 16 * (This.demo.line - 2)
+            let sus_end = This.demo.sustain[j][1] - 16 * (This.demo.line - 2)
+            if (noteseq.notes[i].endTime > sus_start && noteseq.notes[i].endTime < sus_end){
+              noteseq.notes[i].endTime = sus_end
+              break
+            }
+            if (noteseq.notes[i].endTime < sus_start){
+              break
+            }
+          }
+        }
+        
+      }
+      if (this.demo.line==2){
+        console.log (noteseq)
+      }
 
 
       // Set tompo curve
@@ -1150,6 +1191,14 @@ export default {
         }
         
         out.notes.push({pitch:note.pitch, quantizedStartStep:(note_start-this.t)*4, quantizedEndStep:Math.round((note_end-this.t)*4), velocity: note.velocity})
+      }
+      // Fix note overlaps
+      for (let i=0; i<out.notes.length; i++){
+        for (let j=0; j<out.notes.length; j++){
+          if (out.notes[i].quantizedStartStep < out.notes[j].quantizedStartStep && out.notes[i].quantizedEndStep > out.notes[j].quantizedStartStep){
+            out.notes[i].quantizedEndStep = out.notes[j].quantizedStartStep
+          }
+        }
       }
       return out
     },
@@ -1506,7 +1555,7 @@ export default {
         // Overlay and notemat
         let root
         let chroma
-        if (this.current_chd.includes('sd')){
+        if (this.current_chd.includes('sd') || this.current_chd.includes('xd')){
           root = parseInt(this.current_chd.slice(0,-4))
           chroma = this.current_chd.slice(-2)
         }

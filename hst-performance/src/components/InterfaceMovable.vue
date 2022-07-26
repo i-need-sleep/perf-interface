@@ -36,7 +36,8 @@ export default {
       ctrl: false,
       shift: false,
       s: false,
-      z: false
+      z: false,
+      x: false
     }
   },
 
@@ -224,6 +225,9 @@ export default {
       if (this.z){
         this.current_chord_type = 'sd' + this.current_chord_type
       }
+      if (this.x){
+        this.current_chord_type = 'xd' + this.current_chord_type
+      }
       this.update_center_text(this.get_current_chord_text(scale_root_text))
       this.$emit('update_current_chord', this.current_chord_root + this.current_chord_type + this.current_chord_interval, this.get_current_chord_text(scale_root_text))
 
@@ -254,6 +258,10 @@ export default {
       if (['Z','z'].includes(key)){
         event.preventDefault()
         this.z = true
+      }
+      if (['X','x'].includes(key)){
+        event.preventDefault()
+        this.x = true
       }
       if (['1','2','3','4','5','6','7'].includes(key)){
         event.preventDefault()
@@ -293,6 +301,10 @@ export default {
       if (['Z','z'].includes(key)){
         event.preventDefault()
         this.z = false
+      }
+      if (['X','x'].includes(key)){
+        event.preventDefault()
+        this.x = false
       }
     }
   },

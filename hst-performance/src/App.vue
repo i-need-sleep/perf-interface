@@ -325,7 +325,7 @@ export default {
   data: function(){
     return{
       // Constants (not really)
-      BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
+      BACKEND_PATH: "http://127.0.0.1:5000",//"" //"http://127.0.0.1:5000"
       DEBUG: false,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
@@ -441,10 +441,10 @@ export default {
 
       // Demos
       demo: {
-        name: 'none',//'hst-performance anthem', 'none'
+        name: 'hst-performance anthem',//'hst-performance anthem', 'none'
         bar: -1,
         line: 0,
-        chord_seq: ['1', '4', '5', '5', '5', '1', 'x5', '1', '1', '2', '1', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 'x5', '1'],
+        chord_seq: ['1', '4', '5', '5', '5', '1', 'x5', '1', '6', 'x5', '5', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 'x5', '1'],
         phrase_seq: ['038_B', '050_B', '000_A', '001_A', '002_A', '003_A', '004_A', '005_A', '005_A'],
         locked: true,
         lock_passed: false,
@@ -1064,9 +1064,9 @@ export default {
       // noteseq = this.apply_articulation(noteseq)
 
       let This = this
-      if (this.demo.line==2){
-        console.log (noteseq)
-      }
+      
+      console.log(noteseq)
+
       if (This.demo.bar >= 0){
         for (let i=0; i<noteseq.notes.length; i++){
           for (let j=0; j<This.demo.sustain.length; j++){
@@ -1081,12 +1081,21 @@ export default {
             }
           }
         }
-        
-      }
-      if (this.demo.line==2){
-        console.log (noteseq)
       }
 
+      
+      for (let i=0; i<noteseq.notes.length; i++){
+        for (let j=0; j<noteseq.notes.length; j++){
+          if (noteseq.notes[i].startTime < noteseq.notes[j].startTime && noteseq.notes[i].endTime >= noteseq.notes[j].startTime && noteseq.notes[i].pitch == noteseq.notes[j].pitch){
+            noteseq.notes[i].endTime = noteseq.notes[j].startTime - 0.15
+          }
+        }
+        if (noteseq.notes[i].endTime >= 3.9){
+          noteseq.notes[i].endTime = 5
+        }
+      }
+
+      console.log(noteseq)
 
       // Set tompo curve
       Tone.Transport.bpm.setValueAtTime(60, Tone.Transport.now())
@@ -1111,6 +1120,10 @@ export default {
       }
 
       // Overlay and notemat
+      if (this.current_chd.includes('sd') || this.current_chd.includes('xd')){
+        root = parseInt(this.current_chd.slice(0,-4))
+        chroma = this.current_chd.slice(-2)
+      }
       let new_chd_mat = Array(36).fill(0)
       new_chd_mat[root] = 1
       new_chd_mat[24] = 1
@@ -1136,6 +1149,14 @@ export default {
       }
       if (chroma == 'D7'){
         chm = D7
+      }
+      
+      let s = 0
+      for (let i=0; i<12; i++){
+        s = s + new_chd_mat[i]
+      }
+      if (s == 0){
+        new_chd_mat[0] = 1
       }
 
       for (let i=0; i<chm.length; i++){
@@ -1288,8 +1309,8 @@ export default {
         if (altered_notes[i].velocity > 127){
           altered_notes[i].velocity = 127
         }
-        if (altered_notes[i].velocity < 3){
-          altered_notes[i].velocity = 3
+        if (altered_notes[i].velocity < 10){
+          altered_notes[i].velocity = 38
         }
       }
       return noteseq
@@ -2160,10 +2181,15 @@ export default {
     },
 
     output_midi(note){
-        let dur = (note.endTime - note.startTime)*60000/this.bpm
+        console.log(Tone.Transport.bpm.value)
+        let dur = (note.endTime - note.startTime)*60000/Tone.Transport.bpm.value
+        if (dur > 2 *60000/Tone.Transport.bpm.value){
+          dur = 2 *60000/Tone.Transport.bpm.value
+        }
         if (this.show_midi_devices){
           this.midi_device.channels[this.midi_channel].playNote(note.pitch, {duration: dur, attack: note.velocity/128})
         }
+        console.log(note.pitch, {duration: dur, attack: note.velocity/128})
       },
 
     change_midi_channel(i){
@@ -2288,11 +2314,8 @@ export default {
         event.preventDefault()
       }
       if (['m'].includes(key)){
-      console.log(this.DEBUG)
-        if (this.DEBUG){
-          console.log("DEBUG")
-          console.log(this.demo.name)
-        }
+        console.log = function() {}
+        this.midi_device = 0
       }
     })
 

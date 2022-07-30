@@ -145,6 +145,12 @@ export default {
         if (this.current_chord_type == 'sdm'){
           return root + 'm' 
         }
+        if (this.current_chord_type == 'xdM'){
+          return root 
+        }
+        if (this.current_chord_type == 'xdm'){
+          return root + 'm' 
+        }
         if (this.current_chord_type == "M"){
           return root
         }

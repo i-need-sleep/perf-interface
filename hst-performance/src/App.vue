@@ -595,6 +595,7 @@ export default {
 
       wheel:{
         // Interface
+        enabled: false,
         mode: 'none',
         bpm_type: 'physical',
 
@@ -2403,81 +2404,84 @@ export default {
     original_observer.observe(original_controls, mutationObserver_config);
 
     // Wheel
-    This.apply_velo()
-    var faye_client = new Faye.Client('http://127.0.0.1:8001/');
-    faye_client.subscribe('/messages', function(message){
+    if (This.wheel.enabled){
+      This.apply_velo()
+      var faye_client = new Faye.Client('http://127.0.0.1:8001/');
+      faye_client.subscribe('/messages', function(message){
 
-      This.wheel.connected = true
-      if (This.wheel.mode == 'none'){
-        This.change_wheel_input_type('relative')
-      }
+        This.wheel.connected = true
+        if (This.wheel.mode == 'none'){
+          This.change_wheel_input_type('relative')
+        }
 
-      // Pedal
-        if (message.type == 'gas'){
-          This.wheel.gas = message.value 
-          if (This.wheel.bpm_type == 'delta'){
-            This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+        // Pedal
+          if (message.type == 'gas'){
+            This.wheel.gas = message.value 
+            if (This.wheel.bpm_type == 'delta'){
+              This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+            }
+          }
+
+          if (message.type == 'brake'){
+            This.wheel.brake = message.value 
+            if (This.wheel.bpm_type == 'delta'){
+              This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+            }
+          }
+
+        if (message.type == 'clutch'){
+          This.wheel.clutched = !This.wheel.clutched
+          if (!This.wheel.clutched){
+            // Stop the player at the next query step unless a new chord is entered
+            This.current_chd = ''
+            This.current_chd_text = ''
+          }
+          else if (!This.playing && This.input_type == 'movable'){
+            This.$refs.dial_wheel.outer_on_click(0)
           }
         }
 
-        if (message.type == 'brake'){
-          This.wheel.brake = message.value 
-          if (This.wheel.bpm_type == 'delta'){
-            This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+        // Wheel
+        if (message.type == 'wheel_turn'){
+          if (This.input_type == 'movable'){
+            This.wheel.turn_idx = message.value
+            This.$refs.dial_wheel.outer_on_click(message.value)
           }
         }
 
-      if (message.type == 'clutch'){
-        This.wheel.clutched = !This.wheel.clutched
-        if (!This.wheel.clutched){
-          // Stop the player at the next query step unless a new chord is entered
-          This.current_chd = ''
-          This.current_chd_text = ''
+        // Shift
+        if (message.type == 'shift'){
+          let val = message.value
+          if (val == 1){
+            This.$refs.phrase_filter_wheel.set_circle(50, 50)
+          }
+          if (val == 2){
+            This.$refs.phrase_filter_wheel.set_circle(50, 150)
+          }
+          if (val == 3){
+            This.$refs.phrase_filter_wheel.set_circle(150, 50)
+          }
+          if (val == 4){
+            This.$refs.phrase_filter_wheel.set_circle(150, 150)
+          }
+          if (val == 5){
+            This.$refs.phrase_filter_wheel.set_circle(250, 50)
+          }
+          if (val == 6){
+            This.$refs.phrase_filter_wheel.set_circle(250, 150)
+          }
+          if (val == 0){
+            This.$refs.phrase_filter_wheel.reset()
+          }
         }
-        else if (!This.playing && This.input_type == 'movable'){
-          This.$refs.dial_wheel.outer_on_click(0)
-        }
-      }
 
-      // Wheel
-      if (message.type == 'wheel_turn'){
-        if (This.input_type == 'movable'){
-          This.wheel.turn_idx = message.value
-          This.$refs.dial_wheel.outer_on_click(message.value)
+        if (message.type == 'wheel_shift'){
+          This.wheel.wheel_shift = (message.value + This.wheel.wheel_shift_offset) % 4
+          This.apply_wheel_shift()
         }
-      }
+      })
 
-      // Shift
-      if (message.type == 'shift'){
-        let val = message.value
-        if (val == 1){
-          This.$refs.phrase_filter_wheel.set_circle(50, 50)
-        }
-        if (val == 2){
-          This.$refs.phrase_filter_wheel.set_circle(50, 150)
-        }
-        if (val == 3){
-          This.$refs.phrase_filter_wheel.set_circle(150, 50)
-        }
-        if (val == 4){
-          This.$refs.phrase_filter_wheel.set_circle(150, 150)
-        }
-        if (val == 5){
-          This.$refs.phrase_filter_wheel.set_circle(250, 50)
-        }
-        if (val == 6){
-          This.$refs.phrase_filter_wheel.set_circle(250, 150)
-        }
-        if (val == 0){
-          This.$refs.phrase_filter_wheel.reset()
-        }
-      }
-
-      if (message.type == 'wheel_shift'){
-        This.wheel.wheel_shift = (message.value + This.wheel.wheel_shift_offset) % 4
-        This.apply_wheel_shift()
-      }
-    })
+    }
  },
 
 }

@@ -339,7 +339,7 @@ export default {
   data: function(){
     return{
       // Constants (not really)
-      BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
+      BACKEND_PATH: "http://127.0.0.1:5000",//"" //"http://127.0.0.1:5000"
       DEBUG: false,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
@@ -595,7 +595,7 @@ export default {
 
       wheel:{
         // Interface
-        enabled: false,
+        enabled: true,
         mode: 'none',
         bpm_type: 'physical',
 
@@ -2341,15 +2341,15 @@ export default {
     })
 
     // Mouse wheel
-    // document.addEventListener('wheel', (event) => {
-    //   if (this.next_bpm > 30 && this.next_bpm < 200){
-    //     event.preventDefault()
-    //     this.next_bpm -= event.deltaY / 102
-    //   }
-    // },
-    // {
-    //   passive: false 
-    // })
+    document.addEventListener('wheel', (event) => {
+      if (this.next_bpm > 30 && this.next_bpm < 200){
+        event.preventDefault()
+        this.next_bpm -= event.deltaY / 102
+      }
+    },
+    {
+      passive: false 
+    })
 
     // Cell highlighting - original (copied form educational)
     const mutationObserver_config = { childList: true, subtree: true, attributes:true };

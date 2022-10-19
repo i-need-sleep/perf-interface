@@ -340,7 +340,7 @@ export default {
     return{
       // Constants (not really)
       BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
-      DEBUG: true,
+      DEBUG: false,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
       // Chord playback

@@ -3,8 +3,9 @@ const g = require('logitech-g29')
 var http = require('http'),
     faye = require('faye');
 
-var server = http.createServer(),
-    bayeux = new faye.NodeAdapter({mount: '/'});
+var server = http.createServer();
+
+var bayeux = new faye.NodeAdapter({mount: '/'});
 
 bayeux.attach(server);
 server.listen(8001);
@@ -12,9 +13,13 @@ server.listen(8001);
 let turn_idx = -1
 let wheel_shift = 0
 
+// Consts
+const friction = 0.7
+const friction_angle = 1
+
 g.connect(
     {
-        autocenter: true,
+        autocenter: [0.3, 0.3],
         range: 360
     },
   function(err) {
@@ -63,10 +68,17 @@ g.connect(
             });
         }
 
+        // Friction near thresholds
+        if (val % (100/7) < friction_angle){
+            g.forceFriction(friction)
+        }
+        else{
+            g.forceFriction(0)
+        }
+
     })
 
     g.on('shifter-gear', function(val) {
-        console.log(val)
         bayeux.getClient().publish('/messages', {
             type: 'shift',
             value: val,
@@ -87,7 +99,6 @@ g.connect(
     g.on('wheel-shift_right', function(val) {
         if (val == 1){
             wheel_shift = wheel_shift + 1
-            console.log(wheel_shift)
             bayeux.getClient().publish('/messages', {
                 type: 'wheel_shift',
                 value: wheel_shift,
@@ -96,4 +107,11 @@ g.connect(
     })
 
 
+})
+
+// Handle messages from the client
+bayeux.on('publish', function(clientId, channel, data){
+    if (channel == '/client'){
+        console.log(clientId, channel, data)
+    }
 })

@@ -10,7 +10,7 @@ const { Note, Scale } = require("@tonaljs/tonal")
 console.log(Note,Scale)
 
 export default {
-  name: 'InterfaceMovable',
+  name: 'InterfaceMovableWheel',
 
   props:{
     interface_key: String,

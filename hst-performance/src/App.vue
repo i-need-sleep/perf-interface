@@ -240,13 +240,25 @@
         v-bind:key="key" class="dropdown-item" href="#" v-on:click="change_key(key)">{{key + " major"}}</a></li>
       </ul>
     </div>
+
+    <div class="btn-group">
+      <button class="btn btn-light dropdown-toggle" type="button" data-toggle="dropdown">{{"Wheel: "+this.wheel.mode}}
+      <span class="caret"></span></button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" v-on:click="change_wheel_input_type('none')">None</a></li>
+        <li><a class="dropdown-item" href="#" v-on:click="change_wheel_input_type('relative')">Relative</a></li>
+        <li><a class="dropdown-item" href="#" v-on:click="change_wheel_input_type('fixed')">Fixed</a></li>
+      </ul>
+    </div>
+
     </div>
 
     <!-- Interface UIs -->  
     <div v-if="this.loaded && ! this.hide_vis_input">
-    <InterfaceFixed v-if="input_type == 'fixed'" v-on:update_current_chord="update_current_chord"/>
+    <InterfaceFixed v-if="input_type == 'fixed'  && !this.wheel.connected" v-on:update_current_chord="update_current_chord"/>
     <InterfaceMovable ref="dial" v-if="input_type == 'movable' && !this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
-    <InterfaceMovableWheel ref="dial_wheel" v-if="input_type == 'movable' && this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
+    <InterfaceMovableWheel ref="dial_wheel" v-if="this.wheel.mode == 'relative' && this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
+    <InterfaceMovableWheelFixed ref="dial_wheel" v-if="this.wheel.mode == 'fixed' && this.wheel.connected" v-bind:interface_key="this.key" v-bind:roots="scales_major" v-on:update_current_chord="update_current_chord"/>
     </div>
 
   </div>
@@ -299,6 +311,7 @@ import PhraseFilter from './components/PhraseFilter.vue'
 import PhraseSelect from './components/PhraseSelect.vue'
 import PhraseSelectDemo from './components/PhraseSelectDemo.vue'
 import InterfaceMovableWheel from './components/InterfaceMovableWheel.vue'
+import InterfaceMovableWheelFixed from './components/InterfaceMovableWheelFixed.vue'
 import PhraseFilterWheel from './components/PhraseFilterWheel.vue'
 const axios = require('axios').default
 const d3 = require("d3")
@@ -320,13 +333,14 @@ export default {
     PhraseSelect,
     PhraseSelectDemo,
     InterfaceMovableWheel,
+    InterfaceMovableWheelFixed,
     PhraseFilterWheel
 },
   data: function(){
     return{
       // Constants (not really)
-      BACKEND_PATH: "http://127.0.0.1:5000",//"" //"http://127.0.0.1:5000"
-      DEBUG: false,
+      BACKEND_PATH: "",//"" //"http://127.0.0.1:5000"
+      DEBUG: true,
       STEP_SIZE: 4,
       scales_major: ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
       // Chord playback
@@ -441,7 +455,7 @@ export default {
 
       // Demos
       demo: {
-        name: 'hst-performance anthem',//'hst-performance anthem', 'none'
+        name: 'none',//'hst-performance anthem', 'none'
         bar: -1,
         line: 0,
         chord_seq: ['1', '4', '5', '5', '5', '1', 'x5', '1', '6', 'x5', '5', 's6', '2', '1', '5', '1', '1', '4', '5', '5', '5', '1', 'x5', '1'],
@@ -580,7 +594,9 @@ export default {
         },
 
       wheel:{
-        conncected: false,
+        // Interface
+        mode: 'none',
+        bpm_type: 'physical',
 
         // Pedals
         gas: 0,
@@ -1064,8 +1080,6 @@ export default {
       // noteseq = this.apply_articulation(noteseq)
 
       let This = this
-      
-      console.log(noteseq)
 
       if (This.demo.bar >= 0){
         for (let i=0; i<noteseq.notes.length; i++){
@@ -1094,8 +1108,6 @@ export default {
           noteseq.notes[i].endTime = 5
         }
       }
-
-      console.log(noteseq)
 
       // Set tompo curve
       Tone.Transport.bpm.setValueAtTime(60, Tone.Transport.now())
@@ -1169,7 +1181,9 @@ export default {
 
       // Wheel
       if (this.wheel.connected){
-        this.$refs.dial_wheel.update_offest(this.wheel.turn_idx)
+        if (this.wheel.mode == 'relative'){
+          this.$refs.dial_wheel.update_offest(this.wheel.turn_idx)
+        }
         this.next_bpm = this.bpm + (this.wheel.gas - this.wheel.brake) * this.wheel.acc_ratio
         this.wheel.wheel_shift_offset = 4 - this.wheel.sheel_shift
         this.wheel.sheel_shift = 0
@@ -1230,7 +1244,6 @@ export default {
         t = 16
       }
       let canvas_note = {pitch: note.pitch, startTime: note.startTime + t - 4, endTime: note.endTime + t - 4}
-      // console.log(canvas_note)
       if (note.expressive){
         canvas_note = {pitch: note.pitch, startTime: note.quant_startTime*this.bpm/60/4+t-4, endTime: note.quant_endTime*this.bpm/60/4+t-4}
       }
@@ -2181,7 +2194,6 @@ export default {
     },
 
     output_midi(note){
-        console.log(Tone.Transport.bpm.value)
         let dur = (note.endTime - note.startTime)*60000/Tone.Transport.bpm.value
         if (dur > 2 *60000/Tone.Transport.bpm.value){
           dur = 2 *60000/Tone.Transport.bpm.value
@@ -2189,7 +2201,6 @@ export default {
         if (this.show_midi_devices){
           this.midi_device.channels[this.midi_channel].playNote(note.pitch, {duration: dur, attack: note.velocity/128})
         }
-        console.log(note.pitch, {duration: dur, attack: note.velocity/128})
       },
 
     change_midi_channel(i){
@@ -2202,33 +2213,28 @@ export default {
 
     // Wheel
     apply_velo(){
+      // // constants
+      // let pedal_scalar = 10000
+      // let wheel_force_scalar = 0.001
+      // let break_scalar = 2
+      // let bpm_floor = 50
+
       // // Adjust velo
-      // this.next_bpm += (this.wheel.gas - this.wheel.brake)
-      
-      // // if (this.wheel.velo < 0){
-      // //   this.wheel.velo += this.wheel.drag
-      // //   if (this.wheel.velo > 0){
-      // //     this.wheel.velo = 0
-      // //   }
-      // // }
+      // let wheel_force = pedal_scalar * (this.wheel.gas - break_scalar * this.wheel.brake) / (this.next_bpm - bpm_floor) - (this.next_bpm - bpm_floor)
+      // console.log(pedal_scalar * (this.wheel.gas - this.wheel.brake) / (this.next_bpm - bpm_floor))
+      // console.log((this.next_bpm - bpm_floor))
+      // console.log(wheel_force)
 
-      // // if (this.wheel.velo > 0){
-      // //   this.wheel.velo -= this.wheel.drag
-      // //   if (this.wheel.velo < 0){
-      // //     this.wheel.velo = 0
-      // //   }
-      // // }
+      // this.next_bpm += wheel_force_scalar * wheel_force
 
-      // // this.next_bpm += this.wheel.velo
-      // if (this.next_bpm < 30){
-      //   this.next_bpm = 30
+      // if (this.next_bpm < bpm_floor){
+      //   this.next_bpm = bpm_floor
       // }
       // if (this.next_bpm > 200){
       //   this.next_bpm = 200
       // }
-      // // console.log(this.wheel.velo)
 
-      // setTimeout(() => {  this.apply_velo(); },  100)
+      // setTimeout(() => {  this.apply_velo(); },  10)
       
     },
 
@@ -2239,6 +2245,17 @@ export default {
       }
       else{
         this.$refs.phrase_selector.reset()
+      }
+    },
+
+    change_wheel_input_type(mode){
+      this.wheel.mode = mode
+      if (mode == 'none'){
+        this.wheel.connected = false
+      }
+      else{
+        this.input_type = 'movable'
+        this.wheel.connected = true
       }
     }
 
@@ -2314,8 +2331,11 @@ export default {
         event.preventDefault()
       }
       if (['m'].includes(key)){
-        console.log = function() {}
-        this.midi_device = 0
+        console.log('hi')
+        faye_client.publish('/client', {
+          text: 'hi'
+      });
+        console.log(this.wheel.mode)
       }
     })
 
@@ -2388,18 +2408,24 @@ export default {
     faye_client.subscribe('/messages', function(message){
 
       This.wheel.connected = true
-      This.change_input_type('movable')
+      if (This.wheel.mode == 'none'){
+        This.change_wheel_input_type('relative')
+      }
 
       // Pedal
-      if (message.type == 'gas'){
-        This.wheel.gas = message.value 
-        This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
-      }
+        if (message.type == 'gas'){
+          This.wheel.gas = message.value 
+          if (This.wheel.bpm_type == 'delta'){
+            This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+          }
+        }
 
-      if (message.type == 'brake'){
-        This.wheel.brake = message.value 
-        This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
-      }
+        if (message.type == 'brake'){
+          This.wheel.brake = message.value 
+          if (This.wheel.bpm_type == 'delta'){
+            This.next_bpm = This.bpm + (This.wheel.gas - This.wheel.brake) * This.wheel.acc_ratio
+          }
+        }
 
       if (message.type == 'clutch'){
         This.wheel.clutched = !This.wheel.clutched
